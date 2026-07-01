@@ -86,6 +86,19 @@ tbody tr:hover{background:var(--hover)}
 ::-webkit-scrollbar{height:10px;width:10px}
 ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:6px}
 ::-webkit-scrollbar-track{background:#f1f5f9}
+/* 配置区专用样式 */
+.cfg-section{padding:14px 0;border-bottom:1px solid #f1f5f9}
+.cfg-section:last-child{border-bottom:none}
+.cfg-title{font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px}
+.cfg-desc{font-size:11px;font-weight:400;color:#94a3b8;margin-left:6px}
+.cfg-row{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.cfg-item{min-width:0}
+.cfg-inline{display:flex;align-items:center;gap:6px;margin-top:3px}
+.cfg-num{width:55px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12px}
+.cfg-hint{font-size:11px;color:#94a3b8}
+.cfg-sum-ok{font-size:12px;color:var(--green);font-weight:600;white-space:nowrap}
+.cfg-tips{font-size:11px;color:#64748b;background:#f8fafc;border-radius:6px;padding:7px 10px;margin-top:8px}
 </style>
 </head>
 <body>
@@ -116,26 +129,101 @@ tbody tr:hover{background:var(--hover)}
 
 <!-- 配置 -->
 <div class="card">
-  <h2 class="collapsible" id="cfgHead">2. 分析配置 ▾</h2>
-  <div class="coll-body" id="cfgBody">
-    <div class="row">
-      <div style="flex:1;min-width:280px">
-        <label class="lbl">停用词（按空格分隔，过滤时统一小写）</label>
-        <textarea id="stopwords" rows="2">for the a an of to on in and with or is are be as at by from this that these those it its</textarea>
-      </div>
-      <div style="min-width:200px">
-        <label class="lbl">小数位</label>
-        <input type="number" id="decimals" value="2" min="0" max="6" style="width:90px">
-        <div class="legend" style="margin-top:8px">展示量/点击量/购买量 保留整数</div>
-      </div>
-      <div style="min-width:200px">
-        <label class="lbl">数值显示</label>
-        <div class="chips" style="margin-top:2px">
-          <span class="chip on" id="pctToggle">百分比显示</span>
-          <span class="chip on" id="colorToggle">条件着色</span>
+  <h2 class="collapsible" id="cfgHead">2. 分析配置 ▸</h2>
+  <div class="coll-body hidden" id="cfgBody">
+
+    <!-- A. 基础设置 -->
+    <div class="cfg-section">
+      <div class="cfg-title">A. 基础设置 <span class="cfg-desc">表格显示和拆词时去掉的无意义词</span></div>
+      <div class="cfg-row">
+        <div class="cfg-item" style="flex:2;min-width:280px">
+          <label class="lbl">停用词（无意义、不单独投放的词）</label>
+          <textarea id="stopwords" rows="2">for the a an of to on in and with or is are be as at by from this that these those it its pack pk set piece ft inch cm w v mm</textarea>
+        </div>
+        <div class="cfg-item">
+          <label class="lbl">小数位</label>
+          <input type="number" id="decimals" value="2" min="0" max="6" style="width:90px">
+        </div>
+        <div class="cfg-item">
+          <label class="lbl">显示选项</label>
+          <div class="chips" style="margin-top:2px">
+            <span class="chip on" id="pctToggle">百分比显示</span>
+            <span class="chip on" id="colorToggle">条件着色</span>
+          </div>
         </div>
       </div>
     </div>
+
+    <!-- B. 词根筛选 -->
+    <div class="cfg-section">
+      <div class="cfg-title">B. 词根筛选 <span class="cfg-desc">控制哪些拆出来的词根有资格参与分析和组词</span></div>
+      <div class="cfg-grid">
+        <div class="cfg-item">
+          <label class="lbl">词根至少几个字母</label>
+          <div class="cfg-inline">
+            <input type="number" id="minLen" value="2" min="1" max="6" class="cfg-num">
+            <span class="cfg-hint">2 = 去掉 c、i 等单字母</span>
+          </div>
+        </div>
+        <div class="cfg-item">
+          <label class="lbl">去掉纯数字词根</label>
+          <div class="cfg-inline">
+            <span class="chip on" id="filterNum">开启</span>
+            <span class="cfg-hint">去掉 4、16、17 等</span>
+          </div>
+        </div>
+        <div class="cfg-item">
+          <label class="lbl">去掉规格单位词</label>
+          <div class="cfg-inline">
+            <span class="chip on" id="filterSpec">开启</span>
+            <span class="cfg-hint">去掉 ft、inch、w、mm 等</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C. 复合得分 -->
+    <div class="cfg-section">
+      <div class="cfg-title">C. 复合得分权重 <span class="cfg-desc">决定"什么词根值得组词开广告"，三者之和须=100</span></div>
+      <div class="cfg-row" style="align-items:flex-end">
+        <div class="cfg-item">
+          <label class="lbl">转化表现 <span class="cfg-hint">（ROAS好坏）</span></label>
+          <div class="cfg-inline"><input type="number" id="wPerf" value="60" min="0" max="100" class="cfg-num">%</div>
+        </div>
+        <div class="cfg-item">
+          <label class="lbl">搜索词位置 <span class="cfg-hint">（靠前=核心词）</span></label>
+          <div class="cfg-inline"><input type="number" id="wPos" value="20" min="0" max="100" class="cfg-num">%</div>
+        </div>
+        <div class="cfg-item">
+          <label class="lbl">出现频次 <span class="cfg-hint">（高频=稳定）</span></label>
+          <div class="cfg-inline"><input type="number" id="wFreq" value="20" min="0" max="100" class="cfg-num">%</div>
+        </div>
+        <div class="cfg-item"><span id="wSum" class="cfg-sum-ok">✓ 合计100</span></div>
+      </div>
+      <div class="cfg-tips">💡 转化越多权重越高 = 优先组能赚钱的词。常用配比：60/20/20（默认）· 50/30/20（测试期多看位置）· 70/20/10（利润优先）</div>
+    </div>
+
+    <!-- D. 组词池门槛 -->
+    <div class="cfg-section">
+      <div class="cfg-title">D. 组词池门槛 <span class="cfg-desc">太差或太偶然的词根不让进组词建议</span></div>
+      <div class="cfg-grid">
+        <div class="cfg-item">
+          <label class="lbl">至少出现几次</label>
+          <div class="cfg-inline">
+            <input type="number" id="minFreq" value="3" min="1" max="50" class="cfg-num">
+            <span class="cfg-hint">只出现1-2次可能是偶然</span>
+          </div>
+        </div>
+        <div class="cfg-item">
+          <label class="lbl">复合得分至少多少</label>
+          <div class="cfg-inline">
+            <input type="number" id="minScore" value="10" min="0" max="100" class="cfg-num">
+            <span class="cfg-hint">太低=转化差或位置差</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -170,13 +258,20 @@ tbody tr:hover{background:var(--hover)}
   <h2>5. 组词建议（含共现回查）</h2>
   <div class="note" style="margin-bottom:12px">
     基于<b>复合得分</b> Top 词根，自动生成 2~3 词组合，并回查所有「同时包含这些词根」的历史搜索词，汇总真实展示/点击/转化/ROAS。
-    <b>组词得分</b>=各词根复合得分之和（词根越靠前、表现越好、频次越高，组合分越高）；<b>历史ROAS</b>来自共现搜索词的真实汇总。
+    默认按<b>历史ROAS降序</b>排列（真实盈利能力优先），覆盖词数越多数据越可靠。<b>组词得分</b>=各词根复合得分之和，仅用于筛选候选词根本身质量。
   </div>
   <div class="toolbar">
     <div class="info" id="suggestInfo"></div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <label class="lbl" style="margin:0">Top词根数</label>
-      <input type="number" id="topN" value="10" min="3" max="30" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;gap:6px;align-items:center">
+        <label class="lbl" style="margin:0">Top词根数</label>
+        <input type="number" id="topN" value="10" min="3" max="30" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <label class="lbl" style="margin:0">最低覆盖词数</label>
+        <input type="number" id="minHits" value="3" min="1" max="50" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+        <span class="muted" style="font-size:11px">过滤小样本噪音</span>
+      </div>
       <button class="btn btn-ghost btn-sm" id="genSuggest">生成建议</button>
     </div>
   </div>
@@ -204,7 +299,7 @@ const STATE = {
   ranges:{},        // {指标:{min,max}}
   termSearch:'',
   suggestions:[],
-  sugSortKey:'comboScore', sugSortDir:'desc',
+  sugSortKey:'ROAS', sugSortDir:'desc',
 };
 
 /* ============ CSV 解析（处理引号/转义/换行，自动检测分隔符） ============ */
@@ -310,16 +405,25 @@ function standardize(rows, type){
   });
 }
 
-/* ============ 词根拆分 ============ */
+/* ============ 词根拆分（含基础过滤） ============ */
+const SPEC_WORDS=new Set(['ft','inch','cm','mm','w','v','kg','g','ml','l','oz','lb','hz']);
 function splitTokens(text, type, stopwords){
   const s=String(text||'').toLowerCase();
   if(type==='product'){
     const t=s.trim();
     return t?[t]:[];
   }
-  // 按空格和连字符拆分
+  const minLen=parseInt(document.getElementById('minLen')?.value)||2;
+  const filterNum=document.getElementById('filterNum')?.classList.contains('on');
+  const filterSpec=document.getElementById('filterSpec')?.classList.contains('on');
   let parts=s.split(/[\s\-_]+/).map(x=>x.trim()).filter(Boolean);
-  return parts.filter(t=>!stopwords.has(t));
+  return parts.filter(t=>{
+    if(stopwords.has(t)) return false;
+    if(t.length<minLen) return false;
+    if(filterNum&&/^\d+$/.test(t)) return false;
+    if(filterSpec&&SPEC_WORDS.has(t)) return false;
+    return true;
+  });
 }
 
 /* ============ 均摊（单行→多个词根记录） ============ */
@@ -398,7 +502,11 @@ function aggregate(tokens){
     else if(o['ROAS']>=roasP33) perfScore=50+(o['ROAS']-roasP33)/(roasP67-roasP33)*50;
     else perfScore=o['ROAS']/roasP33*50;
     o['perfScore']=perfScore;
-    o['复合得分']=(o['位置分']/100)*(perfScore/100)*o['freqWeight']*100;
+    // 复合得分：加权求和，权重从配置区读取
+    const wPerf=(parseInt(document.getElementById('wPerf')?.value)||60)/100;
+    const wPos=(parseInt(document.getElementById('wPos')?.value)||20)/100;
+    const wFreq=(parseInt(document.getElementById('wFreq')?.value)||20)/100;
+    o['复合得分']=perfScore*wPerf+o['位置分']*wPos+o['freqWeight']*100*wFreq;
   }
   return result;
 }
@@ -419,7 +527,7 @@ const METRICS=[
   {key:'CPA',label:'CPA',cost:true,tip:'= 总成本 ÷ 购买量。每促成一单的广告成本，越低越好。0表示无购买'},
   {key:'客单价',label:'客单价',cost:true,tip:'= 销售额 ÷ 购买量。该词根关联商品的客单价。0表示无购买'},
   {key:'位置分',label:'位置分',score:true,tip:'词根在搜索词中的位置得分(0~100)。第1位得N分(词根数)，末位得1分，线性递减。同一词根所有出现求平均。越靠前得分越高，代表买家核心意图词'},
-  {key:'复合得分',label:'复合得分',score:true,tip:'综合评价分(0~100)。= 位置分 × 表现分 × 频次权重。表现分由ROAS自适应分位数映射(达到数据Top33%即满分)；频次权重=log平滑(出现越多权重越高但递减)。用于组词建议的排序依据'},
+  {key:'复合得分',label:'复合得分',score:true,tip:'综合评价分(0~100)。= 表现分×权重 + 位置分×权重 + 频次权重×权重。权重可在分析配置区调节(默认60/20/20)。转化(表现分)占主导，位置仅作辅助。用于组词建议的候选词根筛选'},
 ];
 
 /* ============ 渲染：文件列表 ============ */
@@ -733,8 +841,13 @@ function csvCell(v){
 /* ============ 组词建议（含共现回查） ============ */
 function generateSuggestions(){
   const topN=parseInt(document.getElementById('topN').value)||10;
-  // 用全部agg（不受当前筛选影响，保证组词池完整），按复合得分取Top
-  const pool=STATE.agg.slice().sort((a,b)=>b['复合得分']-a['复合得分']).slice(0,topN);
+  const minFreq=parseInt(document.getElementById('minFreq')?.value)||3;
+  const minScore=parseFloat(document.getElementById('minScore')?.value)||10;
+  // 用全部agg，先过门槛（出现次数+复合得分），再按复合得分取Top
+  const pool=STATE.agg
+    .filter(d=>d['出现次数']>=minFreq && d['复合得分']>=minScore)
+    .sort((a,b)=>b['复合得分']-a['复合得分'])
+    .slice(0,topN);
   if(pool.length<2){alert('可用词根不足2个，无法生成组合');return;}
 
   // 构建词根→复合得分映射
@@ -763,6 +876,7 @@ function generateSuggestions(){
   }
 
   // 对每个组合回查共现搜索词
+  const minHits=parseInt(document.getElementById('minHits').value)||1;
   const results=[];
   for(const combo of combos){
     const comboSet=new Set(combo);
@@ -771,13 +885,14 @@ function generateSuggestions(){
       return true;
     });
     if(!hits.length) continue;
+    if(hits.length<minHits) continue; // 过滤小样本
     // 汇总共现搜索词的真实指标
     const sum=(k)=>hits.reduce((s,h)=>s+h.m[k],0);
     const imp=sum('展示量'),cli=sum('点击量'),cost=sum('总成本'),pur=sum('购买量'),sales=sum('销售额');
     const roas=cost>0?sales/cost:0;
     const cvr=cli>0?pur/cli:0;
     const ctr=imp>0?cli/imp:0;
-    // 组词得分=各词根复合得分之和
+    // 组词得分=各词根复合得分之和（用于候选池筛选，非最终排序依据）
     const comboScore=combo.reduce((s,w)=>s+(scoreMap[w]||0),0);
     results.push({
       combo:combo.join(' + '),
@@ -789,8 +904,12 @@ function generateSuggestions(){
       sampleTerms:hits.slice(0,3).map(h=>h.term),
     });
   }
-  // 按组词得分降序
-  results.sort((a,b)=>b.comboScore-a.comboScore);
+  // 排序：历史ROAS优先（真实盈利能力），覆盖词数辅助（数据可信度），组词得分兜底
+  results.sort((a,b)=>{
+    if(b.ROAS!==a.ROAS) return b.ROAS-a.ROAS;
+    if(b.hitCount!==a.hitCount) return b.hitCount-a.hitCount;
+    return b.comboScore-a.comboScore;
+  });
   STATE.suggestions=results;
   renderSuggestions(results);
 }
@@ -800,15 +919,15 @@ function renderSuggestions(data){
   const tb=document.getElementById('suggestTb');
   const cols=[
     {k:'combo',l:'词根组合',left:true,tip:'由Top词根组合而成的候选广告词（2~3个词根）'},
-    {k:'comboScore',l:'组词得分',score:true,tip:'= 该组合中各词根的复合得分之和。词根越靠前、表现越好、频次越高，组合分越高'},
-    {k:'hitCount',l:'覆盖词数',int:true,tip:'历史搜索词中同时包含该组合所有词根的搜索词数量。越多说明该组合越有真实需求支撑'},
+    {k:'comboScore',l:'组词得分',score:true,tip:'= 该组合中各词根的复合得分之和。仅用于筛选候选词根本身质量，非最终排序依据'},
+    {k:'hitCount',l:'覆盖词数',int:true,tip:'历史搜索词中同时包含该组合所有词根的搜索词数量。越多说明该组合越有真实需求支撑，数据越可靠'},
     {k:'展示量',l:'展示量',int:true,tip:'所有共现搜索词的展示量之和（真实值，非均摊）'},
     {k:'点击量',l:'点击量',int:true,tip:'所有共现搜索词的点击量之和（真实值，非均摊）'},
     {k:'点击率',l:'点击率',pct:true,tip:'= 点击量 ÷ 展示量。基于共现搜索词真实汇总'},
     {k:'总成本',l:'总成本',cost:true,tip:'所有共现搜索词的广告花费之和（真实值，非均摊）'},
     {k:'购买量',l:'购买量',int:true,tip:'所有共现搜索词的归因购买数之和（真实值，非均摊）'},
     {k:'销售额',l:'销售额',cost:true,tip:'所有共现搜索词的归因销售额之和（真实值，非均摊）'},
-    {k:'ROAS',l:'ROAS',tip:'= 销售额 ÷ 总成本。基于共现搜索词真实汇总，反映该组合的历史盈利能力'},
+    {k:'ROAS',l:'ROAS',tip:'= 销售额 ÷ 总成本。基于共现搜索词真实汇总。默认按此列降序排列，反映该组合的历史盈利能力'},
     {k:'购买率',l:'购买率',pct:true,tip:'= 购买量 ÷ 点击量。基于共现搜索词真实汇总，反映该组合的转化能力'},
     {k:'sample',l:'示例搜索词',left:true,tip:'同时包含该组合所有词根的真实搜索词示例（最多展示3个）'},
   ];
@@ -906,6 +1025,24 @@ document.getElementById('exportCsv').onclick=exportCsv;
 document.getElementById('genSuggest').onclick=generateSuggestions;
 document.getElementById('stopwords').oninput=()=>rebuild();
 document.getElementById('decimals').onchange=()=>renderTable(STATE.filtered);
+// 权重校验
+function checkWeightSum(){
+  const p=parseInt(document.getElementById('wPerf').value)||0;
+  const o=parseInt(document.getElementById('wPos').value)||0;
+  const f=parseInt(document.getElementById('wFreq').value)||0;
+  const sum=p+o+f;
+  const el=document.getElementById('wSum');
+  if(sum===100){el.textContent='✓ 合计100';el.className='cfg-sum-ok';el.style.color='var(--green)';}
+  else{el.textContent='✗ 合计'+sum+'，须=100';el.className='cfg-sum-ok';el.style.color='var(--red)';}
+}
+['wPerf','wPos','wFreq'].forEach(id=>{
+  document.getElementById(id).oninput=()=>{checkWeightSum();rebuild();};
+});
+// 词根过滤规则切换
+document.getElementById('filterNum').onclick=function(){this.classList.toggle('on');rebuild();};
+document.getElementById('filterSpec').onclick=function(){this.classList.toggle('on');rebuild();};
+document.getElementById('minLen').onchange=()=>rebuild();
+// 组词池门槛变化时不需要rebuild（只影响生成建议）
 </script>
 </div>
 <p align="center">@2026 亚马逊广告词根分析工具byDONGDONG </p>  
