@@ -257,8 +257,8 @@ tbody tr:hover{background:var(--hover)}
 <div class="card hidden" id="suggestCard">
   <h2>5. 组词建议（含共现回查）</h2>
   <div class="note" style="margin-bottom:12px">
-    基于<b>复合得分</b> Top 词根，自动生成 2~3 词组合，并回查所有「同时包含这些词根」的历史搜索词，汇总真实展示/点击/转化/ROAS。
-    默认按<b>历史ROAS降序</b>排列（真实盈利能力优先），覆盖词数越多数据越可靠。<b>组词得分</b>=各词根复合得分之和，仅用于筛选候选词根本身质量。
+    基于<b>复合得分</b> Top 词根，自动生成组合，并回查所有「同时包含这些词根」的历史搜索词，汇总真实展示/点击/转化/ROAS。
+    默认按<b>历史ROAS降序</b>排列（真实盈利能力优先）。<b>组词得分</b>=各词根复合得分的平均值（已按词数归一化），覆盖词数越多数据越可靠。
   </div>
   <div class="toolbar">
     <div class="info" id="suggestInfo"></div>
@@ -268,9 +268,17 @@ tbody tr:hover{background:var(--hover)}
         <input type="number" id="topN" value="10" min="3" max="30" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
       </div>
       <div style="display:flex;gap:6px;align-items:center">
+        <label class="lbl" style="margin:0">组词长度</label>
+        <select id="comboLen" style="padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+          <option value="3">2~3词（大词）</option>
+          <option value="4">2~4词</option>
+          <option value="5">2~5词（含长尾）</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
         <label class="lbl" style="margin:0">最低覆盖词数</label>
         <input type="number" id="minHits" value="3" min="1" max="50" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
-        <span class="muted" style="font-size:11px">过滤小样本噪音</span>
+        <span class="muted" style="font-size:11px">4+词组合覆盖≥2也放行</span>
       </div>
       <button class="btn btn-ghost btn-sm" id="genSuggest">生成建议</button>
     </div>
@@ -863,40 +871,47 @@ function generateSuggestions(){
     termTokens.push({term:row.searchTerm, tokens:new Set(toks), m:row.metrics, matchType:row.matchType});
   }
 
-  // 生成2~3词组合（从pool中组合，C(n,2)+C(n,3)）
+  // 生成2~maxLen词组合
+  const maxLen=parseInt(document.getElementById('comboLen').value)||3;
   const combos=[];
   const n=pool.length;
-  for(let i=0;i<n;i++){
-    for(let j=i+1;j<n;j++){
-      combos.push([pool[i]['词根'],pool[j]['词根']]);
-      for(let k=j+1;k<n;k++){
-        combos.push([pool[i]['词根'],pool[j]['词根'],pool[k]['词根']]);
-      }
+  // 递归生成组合
+  function genCombo(start,arr){
+    if(arr.length>=2) combos.push([...arr]);
+    if(arr.length>=maxLen) return;
+    for(let i=start;i<n;i++){
+      arr.push(pool[i]['词根']);
+      genCombo(i+1,arr);
+      arr.pop();
     }
   }
+  genCombo(0,[]);
 
   // 对每个组合回查共现搜索词
   const minHits=parseInt(document.getElementById('minHits').value)||1;
   const results=[];
   for(const combo of combos){
-    const comboSet=new Set(combo);
     const hits=termTokens.filter(t=>{
       for(const w of combo){ if(!t.tokens.has(w)) return false; }
       return true;
     });
     if(!hits.length) continue;
-    if(hits.length<minHits) continue; // 过滤小样本
+    // 覆盖门槛弹性化：4+词组合覆盖≥2也放行
+    const wordCount=combo.length;
+    const hitThreshold=(wordCount>=4)?Math.min(minHits,2):minHits;
+    if(hits.length<hitThreshold) continue;
     // 汇总共现搜索词的真实指标
     const sum=(k)=>hits.reduce((s,h)=>s+h.m[k],0);
     const imp=sum('展示量'),cli=sum('点击量'),cost=sum('总成本'),pur=sum('购买量'),sales=sum('销售额');
     const roas=cost>0?sales/cost:0;
     const cvr=cli>0?pur/cli:0;
     const ctr=imp>0?cli/imp:0;
-    // 组词得分=各词根复合得分之和（用于候选池筛选，非最终排序依据）
-    const comboScore=combo.reduce((s,w)=>s+(scoreMap[w]||0),0);
+    // 组词得分=各词根复合得分的平均值（按词数归一化，避免长词虚高）
+    const comboScore=combo.reduce((s,w)=>s+(scoreMap[w]||0),0)/combo.length;
     results.push({
       combo:combo.join(' + '),
       comboArr:combo,
+      wordCount:wordCount,
       comboScore:comboScore,
       hitCount:hits.length,
       展示量:imp,点击量:cli,点击率:ctr,总成本:cost,
@@ -904,7 +919,7 @@ function generateSuggestions(){
       sampleTerms:hits.slice(0,3).map(h=>h.term),
     });
   }
-  // 排序：历史ROAS优先（真实盈利能力），覆盖词数辅助（数据可信度），组词得分兜底
+  // 排序：历史ROAS优先，覆盖词数辅助，组词得分兜底
   results.sort((a,b)=>{
     if(b.ROAS!==a.ROAS) return b.ROAS-a.ROAS;
     if(b.hitCount!==a.hitCount) return b.hitCount-a.hitCount;
@@ -918,8 +933,9 @@ function renderSuggestions(data){
   const thr=document.getElementById('suggestThr');
   const tb=document.getElementById('suggestTb');
   const cols=[
-    {k:'combo',l:'词根组合',left:true,tip:'由Top词根组合而成的候选广告词（2~3个词根）'},
-    {k:'comboScore',l:'组词得分',score:true,tip:'= 该组合中各词根的复合得分之和。仅用于筛选候选词根本身质量，非最终排序依据'},
+    {k:'combo',l:'词根组合',left:true,tip:'由Top词根组合而成的候选广告词'},
+    {k:'wordCount',l:'词数',int:true,tip:'该组合包含的词根数量。2~3词偏大词流量大，4~5词偏长尾转化更精准'},
+    {k:'comboScore',l:'组词得分',score:true,tip:'= 该组合中各词根复合得分的平均值（已按词数归一化）。2词和5词在同一尺度比较，不会因词多而虚高'},
     {k:'hitCount',l:'覆盖词数',int:true,tip:'历史搜索词中同时包含该组合所有词根的搜索词数量。越多说明该组合越有真实需求支撑，数据越可靠'},
     {k:'展示量',l:'展示量',int:true,tip:'所有共现搜索词的展示量之和（真实值，非均摊）'},
     {k:'点击量',l:'点击量',int:true,tip:'所有共现搜索词的点击量之和（真实值，非均摊）'},
@@ -960,6 +976,7 @@ function sortAndRenderSuggest(){
       if(k==='sample'){av=a.sampleTerms.join(',');bv=b.sampleTerms.join(',');return av.localeCompare(bv)*dir;}
       if(k==='comboScore'){av=a.comboScore;bv=b.comboScore;}
       else if(k==='hitCount'){av=a.hitCount;bv=b.hitCount;}
+      else if(k==='wordCount'){av=a.wordCount;bv=b.wordCount;}
       else {av=a[k]||0;bv=b[k]||0;}
       return (av-bv)*dir;
     });
@@ -967,7 +984,7 @@ function sortAndRenderSuggest(){
   const tb=document.getElementById('suggestTb');
   const dec=parseInt(document.getElementById('decimals').value)||2;
   const pct=(v)=>STATE.pctDisplay?fmt(v*100,dec)+'%':fmt(v,dec);
-  if(!data.length){tb.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:30px">无共现数据的组合</td></tr>';return;}
+  if(!data.length){tb.innerHTML='<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:30px">无共现数据的组合</td></tr>';return;}
   tb.innerHTML=data.map(d=>{
     let roasPill=d.ROAS>=4?'pill-good':d.ROAS>=2?'pill-warn':d.ROAS>0?'pill-bad':'';
     let cvrPill=d.购买率>=0.15?'pill-good':d.购买率>=0.05?'pill-warn':d.购买率>0?'pill-bad':'';
@@ -975,6 +992,7 @@ function sortAndRenderSuggest(){
     const color=STATE.colorOn;
     return `<tr>
       <td class="tl"><b>${esc(d.combo)}</b></td>
+      <td>${d.wordCount}</td>
       <td>${color?`<span class="pill ${scorePill}">${fmt(d.comboScore,1)}</span>`:fmt(d.comboScore,1)}</td>
       <td>${d.hitCount}</td>
       <td>${fmt(d.展示量,0)}</td>
