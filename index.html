@@ -112,7 +112,6 @@ tbody tr:hover{background:var(--hover)}
     <b>识别规则：</b>含「商品投放」列 → 商品投放报告；含「目标竞价」+「顾客搜索词」→ 手动广告；其余含「顾客搜索词」→ 自动广告。
     商品投放报告的「匹配的商品」整体作为一个词根（不拆分）。自动/手动广告的「顾客搜索词」按空格与连字符拆分并过滤停用词。
   </div>
-  <div style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="sampleBtn">加载示例数据</button> <span class="muted" style="font-size:12px">一键载入同目录的3份示例报告</span></div>
 </div>
 
 <!-- 配置 -->
@@ -199,7 +198,7 @@ const STATE = {
   tokens:[],        // 拆分均摊后的记录 {词根,matchType,source,...均摊指标}
   agg:[],           // 词根汇总结果
   filtered:[],      // 筛选后
-  sortKey:'复合得分', sortDir:'desc',
+  sortKey:'出现次数', sortDir:'desc',
   pctDisplay:true, colorOn:true,
   matchFilter:new Set(),  // 空集合=全部
   ranges:{},        // {指标:{min,max}}
@@ -412,8 +411,8 @@ const METRICS=[
   {key:'点击率',label:'点击率',pct:true,tip:'= 点击量 ÷ 展示量。从汇总量重算，非简单平均'},
   {key:'总成本',label:'总成本',cost:true,tip:'该词根命中的所有搜索词的广告花费之和（已按词根数均摊后汇总）'},
   {key:'CPC',label:'CPC',cost:true,tip:'= 总成本 ÷ 点击量。从汇总量重算，非简单平均'},
-  {key:'购买量',label:'购买量',int:true,tip:'该词根命中的所有搜索词的7天归因购买数之和（已按词根数均摊后汇总）'},
-  {key:'销售额',label:'销售额',cost:true,tip:'该词根命中的所有搜索词的7天归因销售额之和（已按词根数均摊后汇总）'},
+  {key:'购买量',label:'购买量',int:true,tip:'该词根命中的所有搜索词的归因购买数之和（已按词根数均摊后汇总）'},
+  {key:'销售额',label:'销售额',cost:true,tip:'该词根命中的所有搜索词的归因销售额之和（已按词根数均摊后汇总）'},
   {key:'ACOS',label:'ACOS',pct:true,tip:'= 总成本 ÷ 销售额。越低越好，0表示无花费或无销售'},
   {key:'ROAS',label:'ROAS',tip:'= 销售额 ÷ 总成本。越高越好，0表示无花费或无销售'},
   {key:'购买率',label:'购买率',pct:true,tip:'= 购买量 ÷ 点击量。即转化率，从汇总量重算'},
@@ -483,14 +482,6 @@ function processTexts(items){
   }
   renderFileList();
   rebuild();
-}
-function loadSample(){
-  const files=['Sponsored_Products_SearchTerm_Jul_1_2026 (1).csv','Sponsored_Products_SearchTerm_Jul_1_2026 (2).csv','Sponsored_Products_SearchTerm_Jul_1_2026.csv'];
-  const btn=document.getElementById('sampleBtn');
-  if(btn){btn.textContent='加载中...';btn.disabled=true;}
-  Promise.all(files.map(fn=>fetch(encodeURI(fn)).then(r=>{if(!r.ok)throw new Error(fn+' '+r.status);return r.text();}).then(t=>({name:fn,text:t}))))
-    .then(processTexts)
-    .catch(e=>{alert('加载示例失败：'+e.message);if(btn){btn.textContent='加载示例数据';btn.disabled=false;}});
 }
 
 function rebuild(){
@@ -808,22 +799,24 @@ function renderSuggestions(data){
   const thr=document.getElementById('suggestThr');
   const tb=document.getElementById('suggestTb');
   const cols=[
-    {k:'combo',l:'词根组合',left:true},
-    {k:'comboScore',l:'组词得分',score:true},
-    {k:'hitCount',l:'覆盖词数',int:true},
-    {k:'展示量',l:'展示量',int:true},
-    {k:'点击量',l:'点击量',int:true},
-    {k:'点击率',l:'点击率',pct:true},
-    {k:'总成本',l:'总成本',cost:true},
-    {k:'购买量',l:'购买量',int:true},
-    {k:'销售额',l:'销售额',cost:true},
-    {k:'ROAS',l:'ROAS'},
-    {k:'购买率',l:'购买率',pct:true},
-    {k:'sample',l:'示例搜索词',left:true},
+    {k:'combo',l:'词根组合',left:true,tip:'由Top词根组合而成的候选广告词（2~3个词根）'},
+    {k:'comboScore',l:'组词得分',score:true,tip:'= 该组合中各词根的复合得分之和。词根越靠前、表现越好、频次越高，组合分越高'},
+    {k:'hitCount',l:'覆盖词数',int:true,tip:'历史搜索词中同时包含该组合所有词根的搜索词数量。越多说明该组合越有真实需求支撑'},
+    {k:'展示量',l:'展示量',int:true,tip:'所有共现搜索词的展示量之和（真实值，非均摊）'},
+    {k:'点击量',l:'点击量',int:true,tip:'所有共现搜索词的点击量之和（真实值，非均摊）'},
+    {k:'点击率',l:'点击率',pct:true,tip:'= 点击量 ÷ 展示量。基于共现搜索词真实汇总'},
+    {k:'总成本',l:'总成本',cost:true,tip:'所有共现搜索词的广告花费之和（真实值，非均摊）'},
+    {k:'购买量',l:'购买量',int:true,tip:'所有共现搜索词的归因购买数之和（真实值，非均摊）'},
+    {k:'销售额',l:'销售额',cost:true,tip:'所有共现搜索词的归因销售额之和（真实值，非均摊）'},
+    {k:'ROAS',l:'ROAS',tip:'= 销售额 ÷ 总成本。基于共现搜索词真实汇总，反映该组合的历史盈利能力'},
+    {k:'购买率',l:'购买率',pct:true,tip:'= 购买量 ÷ 点击量。基于共现搜索词真实汇总，反映该组合的转化能力'},
+    {k:'sample',l:'示例搜索词',left:true,tip:'同时包含该组合所有词根的真实搜索词示例（最多展示3个）'},
   ];
   let h='';
   for(const c of cols){
-    h+=`<th class="${c.left?'th-l':''}" data-k="${c.k}">${c.l}${c.k==='comboScore'||c.k==='hitCount'||c.int||c.pct||c.cost?'<span class="arrow">⇅</span>':''}</th>`;
+    const tipAttr=c.tip?` title="${esc(c.tip)}"`:'';
+    const helpIcon=c.tip?'<span class="th-help" onclick="event.stopPropagation()">?</span>':'';
+    h+=`<th class="${c.left?'th-l':''}" data-k="${c.k}"${tipAttr}>${c.l}${helpIcon}${c.k==='comboScore'||c.k==='hitCount'||c.int||c.pct||c.cost?'<span class="arrow">⇅</span>':''}</th>`;
   }
   thr.innerHTML=h;
   // 排序绑定
@@ -910,7 +903,6 @@ document.getElementById('resetFilter').onclick=()=>{
   renderChips();applyAndRender();
 };
 document.getElementById('exportCsv').onclick=exportCsv;
-document.getElementById('sampleBtn').onclick=loadSample;
 document.getElementById('genSuggest').onclick=generateSuggestions;
 document.getElementById('stopwords').oninput=()=>rebuild();
 document.getElementById('decimals').onchange=()=>renderTable(STATE.filtered);
