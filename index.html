@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>亚马逊词根分析工具</title>
+<style>
+:root{
+  --bg:#f4f6fb; --card:#ffffff; --border:#e2e8f0; --txt:#1f2937; --muted:#6b7280;
+  --primary:#2563eb; --primary-d:#1d4ed8; --accent:#0ea5e9; --green:#16a34a; --red:#dc2626; --amber:#d97706;
+  --thead:#1e293b; --zebra:#f8fafc; --hover:#eff6ff; --chip:#eef2ff; --chip-b:#c7d2fe;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--txt);line-height:1.5;font-size:14px}
+.wrap{max-width:1500px;margin:0 auto;padding:20px}
+header{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;padding:22px 26px;border-radius:14px;box-shadow:0 6px 20px rgba(37,99,235,.18);margin-bottom:18px}
+header h1{font-size:22px;display:flex;align-items:center;gap:10px}
+header .sub{opacity:.88;margin-top:5px;font-size:13px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.card h2{font-size:15px;margin-bottom:12px;color:#334155;display:flex;align-items:center;gap:8px;border-left:4px solid var(--primary);padding-left:10px}
+.row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+.drop{flex:1;min-width:280px;border:2px dashed #cbd5e1;border-radius:10px;padding:26px;text-align:center;cursor:pointer;transition:.2s;background:#fbfdff}
+.drop:hover,.drop.drag{border-color:var(--primary);background:var(--hover)}
+.drop .big{font-size:30px;color:var(--primary)}
+.drop p{color:var(--muted);margin-top:6px;font-size:13px}
+.filelist{flex:1;min-width:280px}
+.filelist .empty{color:var(--muted);font-size:13px;padding:10px 0}
+.fitem{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:7px;background:#fff;font-size:13px}
+.fitem .name{font-weight:600}
+.fitem .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;margin-left:6px}
+.tag.auto{background:#dbeafe;color:#1e40af}
+.tag.manual{background:#fef3c7;color:#92400e}
+.tag.product{background:#dcfce7;color:#166534}
+.tag.unknown{background:#fee2e2;color:#991b1b}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:.15s}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-d)}
+.btn-ghost{background:#fff;border:1px solid var(--border);color:var(--txt)}
+.btn-ghost:hover{background:var(--hover)}
+.btn-sm{padding:5px 10px;font-size:12px}
+textarea{width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-family:inherit;font-size:12px;resize:vertical}
+label.lbl{font-size:12px;font-weight:600;color:#475569;display:block;margin-bottom:5px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:linear-gradient(135deg,#f8fafc,#eef2ff);border:1px solid var(--border);border-radius:10px;padding:11px 13px}
+.kpi .v{font-size:18px;font-weight:700;color:var(--primary)}
+.kpi .l{font-size:11px;color:var(--muted);margin-top:2px}
+.filters{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:14px}
+.filters .field{display:flex;flex-direction:column}
+.filters input[type=number],.filters input[type=text]{width:110px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:4px 11px;border-radius:14px;background:var(--chip);border:1px solid var(--chip-b);color:#3730a3;font-size:12px;cursor:pointer;font-weight:600;user-select:none}
+.chip.off{background:#fff;color:var(--muted);border-color:var(--border)}
+.chip.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+.range-wrap{display:flex;align-items:center;gap:4px}
+.range-wrap span{color:var(--muted);font-size:11px}
+.tbl-scroll{overflow:auto;max-height:680px;border:1px solid var(--border);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+thead{position:sticky;top:0;z-index:5}
+th{background:var(--thead);color:#fff;padding:9px 10px;text-align:right;font-weight:600;white-space:nowrap;cursor:pointer;user-select:none;border-right:1px solid #334155}
+th:first-child,.th-l{text-align:left}
+th:hover{background:#334155}
+th .arrow{opacity:.5;font-size:10px;margin-left:3px}
+th.sorted .arrow{opacity:1;color:var(--accent)}
+.th-help{display:inline-block;width:14px;height:14px;line-height:14px;text-align:center;border-radius:50%;background:rgba(255,255,255,.2);color:#94a3b8;font-size:10px;margin-left:3px;cursor:help;font-weight:bold;vertical-align:middle}
+.th-help:hover{background:rgba(255,255,255,.4);color:#fff}
+td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap}
+td.tl{text-align:left;font-weight:600}
+tbody tr:nth-child(even){background:var(--zebra)}
+tbody tr:hover{background:var(--hover)}
+.badge-src{font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:600;vertical-align:middle}
+.pill{display:inline-block;padding:1px 7px;border-radius:8px;font-size:11px;font-weight:600}
+.pill-good{background:#dcfce7;color:#166534}
+.pill-bad{background:#fee2e2;color:#991b1b}
+.pill-warn{background:#fef3c7;color:#92400e}
+.pill-na{background:#f1f5f9;color:#64748b}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;justify-content:space-between}
+.toolbar .info{font-size:12px;color:var(--muted)}
+.muted{color:var(--muted)}
+.hidden{display:none!important}
+.legend{font-size:11px;color:var(--muted);margin-top:8px}
+.legend b{color:var(--txt)}
+.note{font-size:12px;color:var(--muted);background:#f8fafc;border:1px dashed var(--border);border-radius:8px;padding:9px 12px;margin-top:10px}
+.collapsible{cursor:pointer}
+.coll-body{margin-top:10px}
+::-webkit-scrollbar{height:10px;width:10px}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:6px}
+::-webkit-scrollbar-track{background:#f1f5f9}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>亚马逊词根分析工具</h1>
+  <div class="sub">上传亚马逊 Sponsored Products 搜索词报告（自动广告 / 手动广告 / 商品投放），自动拆分词根并汇总指标，支持按匹配类型与每个指标范围筛选</div>
+</header>
+
+<!-- 上传 -->
+<div class="card">
+  <h2>1. 上传报告文件</h2>
+  <div class="row">
+    <div class="drop" id="drop">
+      <div class="big">⬆</div>
+      <p>点击或拖拽 CSV 文件到此处，可同时上传多个文件</p>
+      <input type="file" id="fileInput" multiple accept=".csv,.tsv,.txt" class="hidden">
+    </div>
+    <div class="filelist" id="filelist">
+      <div class="empty">尚未上传文件</div>
+    </div>
+  </div>
+  <div class="note">
+    <b>识别规则：</b>含「商品投放」列 → 商品投放报告；含「目标竞价」+「顾客搜索词」→ 手动广告；其余含「顾客搜索词」→ 自动广告。
+    商品投放报告的「匹配的商品」整体作为一个词根（不拆分）。自动/手动广告的「顾客搜索词」按空格与连字符拆分并过滤停用词。
+  </div>
+  <div style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="sampleBtn">加载示例数据</button> <span class="muted" style="font-size:12px">一键载入同目录的3份示例报告</span></div>
+</div>
+
+<!-- 配置 -->
+<div class="card">
+  <h2 class="collapsible" id="cfgHead">2. 分析配置 ▾</h2>
+  <div class="coll-body" id="cfgBody">
+    <div class="row">
+      <div style="flex:1;min-width:280px">
+        <label class="lbl">停用词（按空格分隔，过滤时统一小写）</label>
+        <textarea id="stopwords" rows="2">for the a an of to on in and with or is are be as at by from this that these those it its</textarea>
+      </div>
+      <div style="min-width:200px">
+        <label class="lbl">小数位</label>
+        <input type="number" id="decimals" value="2" min="0" max="6" style="width:90px">
+        <div class="legend" style="margin-top:8px">展示量/点击量/购买量 保留整数</div>
+      </div>
+      <div style="min-width:200px">
+        <label class="lbl">数值显示</label>
+        <div class="chips" style="margin-top:2px">
+          <span class="chip on" id="pctToggle">百分比显示</span>
+          <span class="chip on" id="colorToggle">条件着色</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 概览 -->
+<div class="card hidden" id="ovCard">
+  <h2>3. 数据概览</h2>
+  <div class="kpis" id="kpis"></div>
+  <div class="legend" id="srcLegend"></div>
+</div>
+
+<!-- 筛选 + 表格 -->
+<div class="card hidden" id="resCard">
+  <h2>4. 词根汇总表</h2>
+  <div class="toolbar">
+    <div class="info" id="resInfo"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm" id="resetFilter">重置筛选</button>
+      <button class="btn btn-ghost btn-sm" id="exportCsv">导出 CSV</button>
+    </div>
+  </div>
+  <div class="filters" id="filters"></div>
+  <div class="tbl-scroll">
+    <table id="tbl">
+      <thead><tr id="thr"></tr></thead>
+      <tbody id="tb"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 组词建议 -->
+<div class="card hidden" id="suggestCard">
+  <h2>5. 组词建议（含共现回查）</h2>
+  <div class="note" style="margin-bottom:12px">
+    基于<b>复合得分</b> Top 词根，自动生成 2~3 词组合，并回查所有「同时包含这些词根」的历史搜索词，汇总真实展示/点击/转化/ROAS。
+    <b>组词得分</b>=各词根复合得分之和（词根越靠前、表现越好、频次越高，组合分越高）；<b>历史ROAS</b>来自共现搜索词的真实汇总。
+  </div>
+  <div class="toolbar">
+    <div class="info" id="suggestInfo"></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <label class="lbl" style="margin:0">Top词根数</label>
+      <input type="number" id="topN" value="10" min="3" max="30" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+      <button class="btn btn-ghost btn-sm" id="genSuggest">生成建议</button>
+    </div>
+  </div>
+  <div class="tbl-scroll" style="max-height:560px">
+    <table id="suggestTbl">
+      <thead><tr id="suggestThr"></tr></thead>
+      <tbody id="suggestTb"></tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+
+<script>
+/* ============ 全局状态 ============ */
+const STATE = {
+  rows:[],          // 解析后的原始行 {source,matchType,searchTerm,metrics:{...}}
+  tokens:[],        // 拆分均摊后的记录 {词根,matchType,source,...均摊指标}
+  agg:[],           // 词根汇总结果
+  filtered:[],      // 筛选后
+  sortKey:'复合得分', sortDir:'desc',
+  pctDisplay:true, colorOn:true,
+  matchFilter:new Set(),  // 空集合=全部
+  ranges:{},        // {指标:{min,max}}
+  termSearch:'',
+  suggestions:[],
+  sugSortKey:'comboScore', sugSortDir:'desc',
+};
+
+/* ============ CSV 解析（处理引号/转义/换行，自动检测分隔符） ============ */
+function parseCSV(text){
+  const rows=[]; let row=[]; let cur=''; let q=false;
+  text=text.replace(/^\uFEFF/,'');
+  // 自动检测分隔符：取第一行，比较逗号和Tab数量
+  const firstLine=text.split('\n')[0]||'';
+  const commaCount=(firstLine.match(/,/g)||[]).length;
+  const tabCount=(firstLine.match(/\t/g)||[]).length;
+  const delim=tabCount>commaCount?'\t':',';
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){
+      if(c==='"'){
+        if(text[i+1]==='"'){cur+='"';i++;}
+        else q=false;
+      } else cur+=c;
+    } else {
+      if(c==='"') q=true;
+      else if(c===delim){row.push(cur);cur='';}
+      else if(c==='\n'){row.push(cur);rows.push(row);row=[];cur='';}
+      else if(c==='\r'){/*skip*/}
+      else cur+=c;
+    }
+  }
+  if(cur!==''||row.length){row.push(cur);rows.push(row);}
+  return rows.filter(r=>r.length && r.some(x=>x.trim()!==''));
+}
+
+function toObj(rows){
+  if(!rows.length) return [];
+  const h=rows[0].map(x=>x.trim());
+  return rows.slice(1).map(r=>{
+    const o={};
+    h.forEach((k,i)=>o[k]=r[i]!==undefined?r[i].trim():'');
+    return o;
+  });
+}
+
+/* ============ 数字解析 ============ */
+function num(v){
+  if(v===null||v===undefined) return 0;
+  if(typeof v==='number') return v;
+  let s=String(v).replace(/,/g,'').trim();
+  if(s===''||s==='-') return 0;
+  const n=parseFloat(s);
+  return isNaN(n)?0:n;
+}
+
+/* ============ 文件类型识别 ============ */
+function detectType(headers, sample){
+  const has=(...ks)=>ks.some(k=>headers.includes(k));
+  if(has('商品投放')) return 'product';
+  if(has('顾客搜索词') && has('目标竞价 (USD)')) return 'manual';
+  if(has('顾客搜索词')) return 'auto';
+  return 'unknown';
+}
+
+/* ============ 匹配类型标签 ============ */
+function getMatchType(type, row){
+  if(type==='auto'){
+    return '自动-'+(row['关键词']||'other');
+  }
+  if(type==='manual'){
+    const a=row['已添加为']||'';
+    if(a.includes('精准')) return '手动-精准匹配';
+    if(a.includes('广泛')) return '手动-广泛匹配';
+    return '手动-扩展词';
+  }
+  if(type==='product'){
+    const p=row['商品投放']||'';
+    if(p.includes('asin-expanded')) return '商品-asin扩展';
+    if(p.includes('asin-targeting')||p.includes('asin="')) return '商品-asin定位';
+    return '商品-其他';
+  }
+  return '未知';
+}
+
+/* ============ 行标准化 ============ */
+function standardize(rows, type){
+  return rows.map(row=>{
+    let searchTerm='';
+    if(type==='product') searchTerm=row['匹配的商品']||'';
+    else searchTerm=row['顾客搜索词']||'';
+    return {
+      source:type,
+      matchType:getMatchType(type,row),
+      searchTerm:searchTerm,
+      metrics:{
+        '展示量':num(row['展示量']),
+        '点击量':num(row['点击量']),
+        '点击率':num(row['点击率']),
+        '总成本':num(row['总成本 (USD)']),
+        'CPC':num(row['CPC (USD)']),
+        '购买量':num(row['购买量']),
+        '销售额':num(row['销售额 (USD)']),
+        'ACOS':num(row['ACOS']),
+        'ROAS':num(row['ROAS']),
+        '购买率':num(row['购买率']),
+      }
+    };
+  });
+}
+
+/* ============ 词根拆分 ============ */
+function splitTokens(text, type, stopwords){
+  const s=String(text||'').toLowerCase();
+  if(type==='product'){
+    const t=s.trim();
+    return t?[t]:[];
+  }
+  // 按空格和连字符拆分
+  let parts=s.split(/[\s\-_]+/).map(x=>x.trim()).filter(Boolean);
+  return parts.filter(t=>!stopwords.has(t));
+}
+
+/* ============ 均摊（单行→多个词根记录） ============ */
+function allocate(row, stopwords){
+  const tokens=splitTokens(row.searchTerm, row.source, stopwords);
+  const N=tokens.length;
+  if(N===0) return [];
+  const m=row.metrics;
+  const div=(v)=>v/N;
+  // 位置分：第i位得 (N-i+1) 分
+  return tokens.map((t,i)=>{
+    const posPoints=N-i; // i从0开始，第1位(i=0)得N分，末位得1分
+    return {
+      '词根':t,'matchType':row.matchType,'source':row.source,'searchTerm':row.searchTerm,
+      '展示量':div(m['展示量']),
+      '点击量':div(m['点击量']),
+      '总成本':div(m['总成本']),
+      '购买量':div(m['购买量']),
+      '销售额':div(m['销售额']),
+      // 比率类不÷N，汇总时从求和量重算
+      '点击率':m['点击率'],
+      'CPC':m['CPC'],
+      'ACOS':m['ACOS'],
+      'ROAS':m['ROAS'],
+      '购买率':m['购买率'],
+      'posPoints':posPoints,
+      'posMax':N,
+    };
+  });
+}
+
+/* ============ 汇总（同词根聚合） ============ */
+const SUM_KEYS=['展示量','点击量','总成本','购买量','销售额'];
+function aggregate(tokens){
+  const map=new Map();
+  for(const t of tokens){
+    if(!map.has(t['词根'])) map.set(t['词根'],{词根:t['词根'],records:[],sources:new Set(),matches:new Set(),searchTerms:[]});
+    const g=map.get(t['词根']);
+    g.records.push(t);
+    g.sources.add(t.source);
+    g.matches.add(t.matchType);
+    if(!g.searchTerms.includes(t.searchTerm)) g.searchTerms.push(t.searchTerm);
+  }
+  const result=[];
+  for(const g of map.values()){
+    const recs=g.records;
+    const n=recs.length;
+    const o={'词根':g.词根,'出现次数':n,'来源数':g.sources.size,'匹配类型':Array.from(g.matches).join(' / '),'searchTerms':g.searchTerms};
+    for(const k of SUM_KEYS) o[k]=recs.reduce((s,r)=>s+r[k],0);
+    // 所有比率从汇总量重算（CTR/CPC/ACOS/ROAS/购买率统一逻辑）
+    o['点击率']=o['展示量']>0?o['点击量']/o['展示量']:0;
+    o['CPC']=o['点击量']>0?o['总成本']/o['点击量']:0;
+    o['ACOS']=o['销售额']>0?o['总成本']/o['销售额']:0;
+    o['ROAS']=o['总成本']>0?o['销售额']/o['总成本']:0;
+    o['购买率']=o['点击量']>0?o['购买量']/o['点击量']:0;
+    // 新增运营指标
+    o['CPA']=o['购买量']>0?o['总成本']/o['购买量']:0;        // 每单成本
+    o['客单价']=o['购买量']>0?o['销售额']/o['购买量']:0;     // 客单价
+    // 位置分：每条记录 (posPoints/posMax)×100，同词根求平均
+    o['位置分']=recs.reduce((s,r)=>s+(r.posPoints/r.posMax)*100,0)/n;
+    // 复合得分（平均逻辑）：位置分×表现分×频次权重
+    // 表现分：ROAS映射(0~100, cap在6)，无转化按0
+    const perfScore=o['ROAS']>0?Math.min(o['ROAS']/6,1)*100:0;
+    // 频次权重：log平滑，避免高频词过度主导，出现1次权重0.3，10次约0.67，50次约1
+    const freqWeight=Math.min(Math.log10(n+1)/Math.log10(51),1);
+    o['复合得分']=(o['位置分']/100)*(perfScore/100)*freqWeight*100;
+    o['perfScore']=perfScore; // 供调试/展示
+    result.push(o);
+  }
+  return result;
+}
+
+/* ============ 指标元数据（用于表格列/筛选） ============ */
+const METRICS=[
+  {key:'出现次数',label:'出现次数',int:true,src:false,tip:'该词根在所有搜索词中出现的总次数（每条搜索词计1次）'},
+  {key:'展示量',label:'展示量',int:true,tip:'该词根命中的所有搜索词的展示量之和（已按词根数均摊后汇总）'},
+  {key:'点击量',label:'点击量',int:true,tip:'该词根命中的所有搜索词的点击量之和（已按词根数均摊后汇总）'},
+  {key:'点击率',label:'点击率',pct:true,tip:'= 点击量 ÷ 展示量。从汇总量重算，非简单平均'},
+  {key:'总成本',label:'总成本',cost:true,tip:'该词根命中的所有搜索词的广告花费之和（已按词根数均摊后汇总）'},
+  {key:'CPC',label:'CPC',cost:true,tip:'= 总成本 ÷ 点击量。从汇总量重算，非简单平均'},
+  {key:'购买量',label:'购买量',int:true,tip:'该词根命中的所有搜索词的7天归因购买数之和（已按词根数均摊后汇总）'},
+  {key:'销售额',label:'销售额',cost:true,tip:'该词根命中的所有搜索词的7天归因销售额之和（已按词根数均摊后汇总）'},
+  {key:'ACOS',label:'ACOS',pct:true,tip:'= 总成本 ÷ 销售额。越低越好，0表示无花费或无销售'},
+  {key:'ROAS',label:'ROAS',tip:'= 销售额 ÷ 总成本。越高越好，0表示无花费或无销售'},
+  {key:'购买率',label:'购买率',pct:true,tip:'= 购买量 ÷ 点击量。即转化率，从汇总量重算'},
+  {key:'CPA',label:'CPA',cost:true,tip:'= 总成本 ÷ 购买量。每促成一单的广告成本，越低越好。0表示无购买'},
+  {key:'客单价',label:'客单价',cost:true,tip:'= 销售额 ÷ 购买量。该词根关联商品的客单价。0表示无购买'},
+  {key:'位置分',label:'位置分',score:true,tip:'词根在搜索词中的位置得分(0~100)。第1位得N分(词根数)，末位得1分，线性递减。同一词根所有出现求平均。越靠前得分越高，代表买家核心意图词'},
+  {key:'复合得分',label:'复合得分',score:true,tip:'综合评价分(0~100)。= 位置分 × 表现分 × 频次权重。表现分=ROAS映射(ROAS=6时满分)；频次权重=log平滑(出现越多权重越高但递减)。用于组词建议的排序依据'},
+];
+
+/* ============ 渲染：文件列表 ============ */
+const fileMetas=[];
+function renderFileList(){
+  const el=document.getElementById('filelist');
+  if(!fileMetas.length){el.innerHTML='<div class="empty">尚未上传文件</div>';return;}
+  el.innerHTML=fileMetas.map((f,i)=>`
+    <div class="fitem">
+      <div>
+        <div class="name">${f.name} <span class="tag ${f.type}">${typeLabel(f.type)}</span></div>
+        <div class="meta">${f.rows} 行数据 · 匹配类型：${f.matches.join(', ')||'-'}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="removeFile(${i})">移除</button>
+    </div>`).join('');
+}
+function typeLabel(t){return {auto:'自动广告',manual:'手动广告',product:'商品投放',unknown:'未知'}[t]||t;}
+function removeFile(i){fileMetas.splice(i,1);renderFileList();rebuild();}
+
+/* ============ 主流程 ============ */
+/* 编码自动检测：UTF-8 BOM > UTF-8(无BOM) > GBK > GB2312 */
+function detectAndDecode(buffer){
+  const bytes=new Uint8Array(buffer);
+  // 检查BOM
+  if(bytes.length>=3&&bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF){
+    return new TextDecoder('utf-8').decode(bytes.slice(3));
+  }
+  if(bytes.length>=2&&bytes[0]===0xFF&&bytes[1]===0xFE){
+    return new TextDecoder('utf-16le').decode(bytes.slice(2));
+  }
+  // 尝试UTF-8解码，检查是否有大量替换字符(乱码标志)
+  const utf8Text=new TextDecoder('utf-8',{fatal:false}).decode(bytes);
+  const replacementCount=(utf8Text.match(/\uFFFD/g)||[]).length;
+  if(replacementCount===0) return utf8Text;
+  // UTF-8有乱码，尝试GBK
+  try{
+    const gbkText=new TextDecoder('gbk').decode(bytes);
+    const gbkBad=(gbkText.match(/\uFFFD/g)||[]).length;
+    if(gbkBad<replacementCount) return gbkText;
+  }catch(e){}
+  return utf8Text; // 回退到UTF-8
+}
+function handleFiles(files){
+  const promises=[...files].map(f=>new Promise(res=>{
+    const reader=new FileReader();
+    reader.onload=()=>{res({name:f.name,text:detectAndDecode(reader.result)});};
+    reader.readAsArrayBuffer(f);
+  }));
+  Promise.all(promises).then(processTexts);
+}
+function processTexts(items){
+  for(const it of items){
+    const rows=parseCSV(it.text);
+    const objs=toObj(rows);
+    if(!objs.length) continue;
+    const type=detectType(Object.keys(objs[0]));
+    const std=standardize(objs,type);
+    const matches=[...new Set(std.map(r=>r.matchType))];
+    fileMetas.push({name:it.name,type,rows:std.length,matches,data:std});
+  }
+  renderFileList();
+  rebuild();
+}
+function loadSample(){
+  const files=['Sponsored_Products_SearchTerm_Jul_1_2026 (1).csv','Sponsored_Products_SearchTerm_Jul_1_2026 (2).csv','Sponsored_Products_SearchTerm_Jul_1_2026.csv'];
+  const btn=document.getElementById('sampleBtn');
+  if(btn){btn.textContent='加载中...';btn.disabled=true;}
+  Promise.all(files.map(fn=>fetch(encodeURI(fn)).then(r=>{if(!r.ok)throw new Error(fn+' '+r.status);return r.text();}).then(t=>({name:fn,text:t}))))
+    .then(processTexts)
+    .catch(e=>{alert('加载示例失败：'+e.message);if(btn){btn.textContent='加载示例数据';btn.disabled=false;}});
+}
+
+function rebuild(){
+  // 合并所有行
+  STATE.rows=fileMetas.flatMap(f=>f.data);
+  if(!STATE.rows.length){document.getElementById('ovCard').classList.add('hidden');document.getElementById('resCard').classList.add('hidden');document.getElementById('suggestCard').classList.add('hidden');return;}
+  document.getElementById('suggestCard').classList.remove('hidden');
+  // 清空旧建议
+  STATE.suggestions=[];
+  document.getElementById('suggestTb').innerHTML='';
+  document.getElementById('suggestInfo').textContent='点击「生成建议」基于Top词根生成组合';
+
+  // 停用词
+  const sw=new Set(document.getElementById('stopwords').value.toLowerCase().split(/\s+/).filter(Boolean));
+
+  // 拆分均摊
+  STATE.tokens=STATE.rows.flatMap(r=>allocate(r,sw));
+
+  // 汇总
+  STATE.agg=aggregate(STATE.tokens);
+
+  // 初始化筛选
+  const allMatches=[...new Set(STATE.rows.map(r=>r.matchType))].sort();
+  STATE.allMatches=allMatches;
+  STATE.ranges={};
+  STATE.matchFilter=new Set();
+  STATE.termSearch='';
+
+  renderOverview(allMatches);
+  renderFilters(allMatches);
+  applyAndRender();
+}
+
+/* ============ 概览 ============ */
+function renderOverview(allMatches){
+  document.getElementById('ovCard').classList.remove('hidden');
+  const t=STATE.rows;
+  const sum=k=>t.reduce((s,r)=>s+r.metrics[k],0);
+  const imp=sum('展示量'),cli=sum('点击量'),cost=sum('总成本'),sales=sum('销售额'),pur=sum('购买量');
+  const kpis=[
+    {v:t.length,l:'原始搜索词行数'},
+    {v:STATE.agg.length,l:'独立词根数'},
+    {v:fmt(imp,0),l:'总展示量'},
+    {v:fmt(cli,0),l:'总点击量'},
+    {v:fmt(cost,2),l:'总成本($)'},
+    {v:fmt(sales,2),l:'总销售额($)'},
+    {v:fmt(pur,0),l:'总购买量'},
+    {v:fmt(cost>0?sales/cost:0,2),l:'整体ROAS'},
+    {v:((sales>0?cost/sales:0)*100).toFixed(1)+'%',l:'整体ACOS'},
+    {v:((cli>0?pur/cli:0)*100).toFixed(1)+'%',l:'整体购买率'},
+  ];
+  document.getElementById('kpis').innerHTML=kpis.map(k=>`<div class="kpi"><div class="v">${k.v}</div><div class="l">${k.l}</div></div>`).join('');
+  const byType={};
+  t.forEach(r=>byType[r.matchType]=(byType[r.matchType]||0)+1);
+  document.getElementById('srcLegend').innerHTML='<b>匹配类型分布：</b>'+allMatches.map(m=>`${m}(${byType[m]})`).join(' · ');
+}
+
+/* ============ 筛选面板 ============ */
+function renderFilters(allMatches){
+  document.getElementById('resCard').classList.remove('hidden');
+  const f=document.getElementById('filters');
+  let html='<div class="field"><label class="lbl">匹配类型</label><div class="chips" id="mtChips">';
+  html+=`<span class="chip on" data-mt="__all">全部</span>`;
+  html+=allMatches.map(m=>`<span class="chip off" data-mt="${m}">${m}</span>`).join('');
+  html+='</div></div>';
+  html+=`<div class="field"><label class="lbl">词根搜索</label><input type="text" id="termSearch" placeholder="包含关键字..." value="${STATE.termSearch}"></div>`;
+  for(const m of METRICS){
+    html+=`<div class="field"><label class="lbl">${m.label}</label><div class="range-wrap"><input type="number" data-r="${m.key}" data-b="min" placeholder="min"><span>~</span><input type="number" data-r="${m.key}" data-b="max" placeholder="max"></div></div>`;
+  }
+  f.innerHTML=html;
+  // 绑定
+  f.querySelectorAll('.chip[data-mt]').forEach(c=>{
+    c.onclick=()=>{toggleMatch(c.dataset.mt);renderChips();applyAndRender();};
+  });
+  f.querySelector('#termSearch').oninput=e=>{STATE.termSearch=e.target.value.toLowerCase();applyAndRender();};
+  f.querySelectorAll('input[data-r]').forEach(inp=>{
+    inp.oninput=()=>{
+      const k=inp.dataset.r, b=inp.dataset.b;
+      const v=inp.value===''?null:parseFloat(inp.value);
+      if(!STATE.ranges[k])STATE.ranges[k]={};
+      STATE.ranges[k][b]=v;
+      applyAndRender();
+    };
+  });
+  renderChips();
+}
+function toggleMatch(m){
+  if(m==='__all'){STATE.matchFilter=new Set();}
+  else{
+    if(STATE.matchFilter.has(m))STATE.matchFilter.delete(m);
+    else STATE.matchFilter.add(m);
+  }
+}
+function renderChips(){
+  const all=document.querySelector('.chip[data-mt="__all"]');
+  all.classList.toggle('on',STATE.matchFilter.size===0);
+  document.querySelectorAll('.chip[data-mt]').forEach(c=>{
+    if(c.dataset.mt==='__all')return;
+    c.classList.toggle('on',STATE.matchFilter.has(c.dataset.mt));
+  });
+}
+
+/* ============ 筛选+排序+渲染 ============ */
+function applyAndRender(){
+  let data=STATE.agg.slice();
+  // 匹配类型筛选
+  if(STATE.matchFilter.size){
+    data=data.filter(d=>d['匹配类型'].split(' / ').some(m=>STATE.matchFilter.has(m)));
+  }
+  // 词根搜索
+  if(STATE.termSearch){
+    data=data.filter(d=>d['词根'].includes(STATE.termSearch));
+  }
+  // 范围筛选
+  for(const k in STATE.ranges){
+    const r=STATE.ranges[k];
+    if(r.min!==null&&r.min!==undefined) data=data.filter(d=>d[k]>=r.min);
+    if(r.max!==null&&r.max!==undefined) data=data.filter(d=>d[k]<=r.max);
+  }
+  // 排序
+  const key=STATE.sortKey, dir=STATE.sortDir==='desc'?-1:1;
+  data.sort((a,b)=>{const av=a[key],bv=b[key];return (typeof av==='string'?av.localeCompare(bv):av-bv)*dir;});
+  STATE.filtered=data;
+  renderTable(data);
+  document.getElementById('resInfo').textContent=`共 ${data.length} 个词根（汇总前 ${STATE.agg.length} 个）`;
+}
+
+/* ============ 表格渲染 ============ */
+function renderTable(data){
+  // 清空着色阈值缓存，基于当前数据重新计算
+  for(const k in _thrCache) delete _thrCache[k];
+  const thr=document.getElementById('thr');
+  const cols=[{key:'词根',label:'词根',left:true,tip:'拆分后的单个词根（已过滤停用词，商品投放整体作为1个词根）'},...METRICS];
+  let h='';
+  for(const c of cols){
+    const sorted=STATE.sortKey===c.key?'sorted':'';
+    const arrow=STATE.sortKey===c.key?(STATE.sortDir==='desc'?'▼':'▲'):'';
+    const tipAttr=c.tip?` title="${esc(c.tip)}"`:'';
+    const helpIcon=c.tip?'<span class="th-help" onclick="event.stopPropagation()">?</span>':'';
+    h+=`<th class="${c.left?'th-l':''} ${sorted}" data-k="${c.key}"${tipAttr}>${c.label}${helpIcon}<span class="arrow">${arrow||'⇅'}</span></th>`;
+  }
+  thr.innerHTML=h;
+  thr.querySelectorAll('th').forEach(th=>{
+    th.onclick=()=>{
+      const k=th.dataset.k;
+      if(STATE.sortKey===k) STATE.sortDir=STATE.sortDir==='desc'?'asc':'desc';
+      else {STATE.sortKey=k;STATE.sortDir='desc';}
+      applyAndRender();
+    };
+  });
+  const tb=document.getElementById('tb');
+  if(!data.length){tb.innerHTML='<tr><td colspan="17" style="text-align:center;color:var(--muted);padding:30px">无匹配数据</td></tr>';return;}
+  tb.innerHTML=data.map(d=>{
+    let tds='';
+    tds+=`<td class="tl">${esc(d['词根'])}</td>`;
+    for(const m of METRICS){
+      tds+=`<td>${fmtCell(d[m.key],m)}</td>`;
+    }
+    return `<tr>${tds}</tr>`;
+  }).join('');
+}
+
+/* ============ 格式化 ============ */
+function fmt(v,dec,isPct){
+  if(v===null||v===undefined||isNaN(v)) return '-';
+  if(dec===0){return Math.round(v).toLocaleString();}
+  return Number(v).toLocaleString(undefined,{minimumFractionDigits:dec,maximumFractionDigits:dec});
+}
+function fmtCell(v,m){
+  const dec=parseInt(document.getElementById('decimals').value)||2;
+  let txt;
+  if(m.int){txt=fmt(Math.round(v),0);}
+  else if(m.pct){txt=STATE.pctDisplay?fmt(v*100,dec)+'%':fmt(v,dec);}
+  else if(m.cost){txt='$'+fmt(v,dec);}
+  else if(m.score){txt=fmt(v,1);}
+  else{txt=fmt(v,dec);}
+  // 着色（自适应分位数：根据当前数据分布动态计算阈值）
+  if(STATE.colorOn){
+    const t=getColorThresholds(m.key);
+    if(t){
+      let cls='';
+      if(t.higherIsBetter){
+        // 值越高越好：>=p67绿 >=p33黄 >0红
+        if(v>=t.p67) cls='pill-good';
+        else if(v>=t.p33) cls='pill-warn';
+        else if(v>0) cls='pill-bad';
+      } else {
+        // 值越低越好：0~p33绿 p33~p67黄 >p67红；0特殊处理
+        if(v===0) cls=''; // 无数据不着色
+        else if(v<=t.p33) cls='pill-good';
+        else if(v<=t.p67) cls='pill-warn';
+        else cls='pill-bad';
+      }
+      if(cls) txt=`<span class="pill ${cls}">${txt}</span>`;
+    }
+  }
+  return txt;
+}
+/* 计算自适应分位数阈值（基于当前筛选后数据） */
+const COLOR_KEYS=['点击率','ACOS','ROAS','购买率','CPA','复合得分','位置分','客单价'];
+const _thrCache={};
+function getColorThresholds(key){
+  if(!COLOR_KEYS.includes(key)) return null;
+  if(_thrCache[key]) return _thrCache[key];
+  const vals=STATE.filtered.map(d=>d[key]).filter(v=>v>0).sort((a,b)=>a-b);
+  if(vals.length<3){ // 数据太少用固定默认值
+    const defaults={
+      '点击率':{p33:0.01,p67:0.03,higherIsBetter:true},
+      'ACOS':{p33:0.3,p67:0.6,higherIsBetter:false},
+      'ROAS':{p33:2,p67:4,higherIsBetter:true},
+      '购买率':{p33:0.05,p67:0.15,higherIsBetter:true},
+      'CPA':{p33:10,p67:20,higherIsBetter:false},
+      '复合得分':{p33:10,p67:30,higherIsBetter:true},
+      '位置分':{p33:40,p67:70,higherIsBetter:true},
+      '客单价':{p33:12,p67:20,higherIsBetter:true},
+    };
+    return defaults[key];
+  }
+  const p33=vals[Math.floor(vals.length*0.33)];
+  const p67=vals[Math.floor(vals.length*0.67)];
+  const higherIsBetter=!['ACOS','CPA'].includes(key);
+  const t={p33,p67,higherIsBetter};
+  _thrCache[key]=t;
+  return t;
+}
+function esc(s){return String(s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
+
+/* ============ 导出 CSV ============ */
+function exportCsv(){
+  if(!STATE.filtered.length) return;
+  const cols=[{key:'词根'},...METRICS.map(m=>({key:m.key})),{key:'出现次数'},{key:'匹配类型'}];
+  const header=['词根','出现次数',...METRICS.map(m=>m.label),'匹配类型'];
+  const lines=[header.map(csvCell).join(',')];
+  for(const d of STATE.filtered){
+    lines.push(['词根','出现次数',...METRICS.map(m=>m.key),'匹配类型'].map(k=>csvCell(d[k])).join(','));
+  }
+  const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='词根汇总_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+}
+function csvCell(v){
+  if(v===null||v===undefined) return '';
+  const s=String(v);
+  return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+}
+
+/* ============ 组词建议（含共现回查） ============ */
+function generateSuggestions(){
+  const topN=parseInt(document.getElementById('topN').value)||10;
+  // 用全部agg（不受当前筛选影响，保证组词池完整），按复合得分取Top
+  const pool=STATE.agg.slice().sort((a,b)=>b['复合得分']-a['复合得分']).slice(0,topN);
+  if(pool.length<2){alert('可用词根不足2个，无法生成组合');return;}
+
+  // 构建词根→复合得分映射
+  const scoreMap={};
+  pool.forEach(r=>scoreMap[r['词根']]=r['复合得分']);
+
+  // 基于所有原始行的词根集合，建立 搜索词→词根数组 映射（用于共现回查）
+  const STOP=new Set(document.getElementById('stopwords').value.toLowerCase().split(/\s+/).filter(Boolean));
+  const termTokens=[]; // {term, tokens:Set, metrics, matchType}
+  for(const row of STATE.rows){
+    const toks=splitTokens(row.searchTerm, row.source, STOP);
+    if(toks.length<2) continue;
+    termTokens.push({term:row.searchTerm, tokens:new Set(toks), m:row.metrics, matchType:row.matchType});
+  }
+
+  // 生成2~3词组合（从pool中组合，C(n,2)+C(n,3)）
+  const combos=[];
+  const n=pool.length;
+  for(let i=0;i<n;i++){
+    for(let j=i+1;j<n;j++){
+      combos.push([pool[i]['词根'],pool[j]['词根']]);
+      for(let k=j+1;k<n;k++){
+        combos.push([pool[i]['词根'],pool[j]['词根'],pool[k]['词根']]);
+      }
+    }
+  }
+
+  // 对每个组合回查共现搜索词
+  const results=[];
+  for(const combo of combos){
+    const comboSet=new Set(combo);
+    const hits=termTokens.filter(t=>{
+      for(const w of combo){ if(!t.tokens.has(w)) return false; }
+      return true;
+    });
+    if(!hits.length) continue;
+    // 汇总共现搜索词的真实指标
+    const sum=(k)=>hits.reduce((s,h)=>s+h.m[k],0);
+    const imp=sum('展示量'),cli=sum('点击量'),cost=sum('总成本'),pur=sum('购买量'),sales=sum('销售额');
+    const roas=cost>0?sales/cost:0;
+    const cvr=cli>0?pur/cli:0;
+    const ctr=imp>0?cli/imp:0;
+    // 组词得分=各词根复合得分之和
+    const comboScore=combo.reduce((s,w)=>s+(scoreMap[w]||0),0);
+    results.push({
+      combo:combo.join(' + '),
+      comboArr:combo,
+      comboScore:comboScore,
+      hitCount:hits.length,
+      展示量:imp,点击量:cli,点击率:ctr,总成本:cost,
+      购买量:pur,销售额:sales,ROAS:roas,购买率:cvr,
+      sampleTerms:hits.slice(0,3).map(h=>h.term),
+    });
+  }
+  // 按组词得分降序
+  results.sort((a,b)=>b.comboScore-a.comboScore);
+  STATE.suggestions=results;
+  renderSuggestions(results);
+}
+
+function renderSuggestions(data){
+  const thr=document.getElementById('suggestThr');
+  const tb=document.getElementById('suggestTb');
+  const cols=[
+    {k:'combo',l:'词根组合',left:true},
+    {k:'comboScore',l:'组词得分',score:true},
+    {k:'hitCount',l:'覆盖词数',int:true},
+    {k:'展示量',l:'展示量',int:true},
+    {k:'点击量',l:'点击量',int:true},
+    {k:'点击率',l:'点击率',pct:true},
+    {k:'总成本',l:'总成本',cost:true},
+    {k:'购买量',l:'购买量',int:true},
+    {k:'销售额',l:'销售额',cost:true},
+    {k:'ROAS',l:'ROAS'},
+    {k:'购买率',l:'购买率',pct:true},
+    {k:'sample',l:'示例搜索词',left:true},
+  ];
+  let h='';
+  for(const c of cols){
+    h+=`<th class="${c.left?'th-l':''}" data-k="${c.k}">${c.l}${c.k==='comboScore'||c.k==='hitCount'||c.int||c.pct||c.cost?'<span class="arrow">⇅</span>':''}</th>`;
+  }
+  thr.innerHTML=h;
+  // 排序绑定
+  thr.querySelectorAll('th').forEach(th=>{
+    th.onclick=()=>{
+      const k=th.dataset.k;
+      if(STATE.sugSortKey===k) STATE.sugSortDir=STATE.sugSortDir==='desc'?'asc':'desc';
+      else {STATE.sugSortKey=k;STATE.sugSortDir='desc';}
+      sortAndRenderSuggest();
+    };
+  });
+  sortAndRenderSuggest();
+}
+
+function sortAndRenderSuggest(){
+  const data=STATE.suggestions.slice();
+  if(STATE.sugSortKey){
+    const k=STATE.sugSortKey, dir=STATE.sugSortDir==='desc'?-1:1;
+    data.sort((a,b)=>{
+      let av,bv;
+      if(k==='combo'){av=a.combo;bv=b.combo;return av.localeCompare(bv)*dir;}
+      if(k==='sample'){av=a.sampleTerms.join(',');bv=b.sampleTerms.join(',');return av.localeCompare(bv)*dir;}
+      if(k==='comboScore'){av=a.comboScore;bv=b.comboScore;}
+      else if(k==='hitCount'){av=a.hitCount;bv=b.hitCount;}
+      else {av=a[k]||0;bv=b[k]||0;}
+      return (av-bv)*dir;
+    });
+  }
+  const tb=document.getElementById('suggestTb');
+  const dec=parseInt(document.getElementById('decimals').value)||2;
+  const pct=(v)=>STATE.pctDisplay?fmt(v*100,dec)+'%':fmt(v,dec);
+  if(!data.length){tb.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:30px">无共现数据的组合</td></tr>';return;}
+  tb.innerHTML=data.map(d=>{
+    let roasPill=d.ROAS>=4?'pill-good':d.ROAS>=2?'pill-warn':d.ROAS>0?'pill-bad':'';
+    let cvrPill=d.购买率>=0.15?'pill-good':d.购买率>=0.05?'pill-warn':d.购买率>0?'pill-bad':'';
+    let scorePill=d.comboScore>=60?'pill-good':d.comboScore>=30?'pill-warn':'pill-bad';
+    const color=STATE.colorOn;
+    return `<tr>
+      <td class="tl"><b>${esc(d.combo)}</b></td>
+      <td>${color?`<span class="pill ${scorePill}">${fmt(d.comboScore,1)}</span>`:fmt(d.comboScore,1)}</td>
+      <td>${d.hitCount}</td>
+      <td>${fmt(d.展示量,0)}</td>
+      <td>${fmt(d.点击量,0)}</td>
+      <td>${pct(d.点击率)}</td>
+      <td>$${fmt(d.总成本,dec)}</td>
+      <td>${fmt(d.购买量,0)}</td>
+      <td>$${fmt(d.销售额,dec)}</td>
+      <td>${color?`<span class="pill ${roasPill}">${fmt(d.ROAS,dec)}</span>`:fmt(d.ROAS,dec)}</td>
+      <td>${color?`<span class="pill ${cvrPill}">${pct(d.购买率)}</span>`:pct(d.购买率)}</td>
+      <td class="tl" style="max-width:240px;overflow:hidden;text-overflow:ellipsis" title="${esc(d.sampleTerms.join(' | '))}">${esc(d.sampleTerms.join(' | '))}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('suggestInfo').textContent=`共 ${data.length} 个有效组合（有共现搜索词支撑）`;
+}
+
+/* ============ 事件绑定 ============ */
+const drop=document.getElementById('drop');
+const fileInput=document.getElementById('fileInput');
+drop.onclick=()=>fileInput.click();
+fileInput.onchange=e=>{if(e.target.files.length)handleFiles(e.target.files);fileInput.value='';};
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag');};
+drop.ondragleave=()=>drop.classList.remove('drag');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');if(e.dataTransfer.files.length)handleFiles(e.dataTransfer.files);};
+
+document.getElementById('cfgHead').onclick=()=>{
+  const b=document.getElementById('cfgBody');
+  b.classList.toggle('hidden');
+  document.getElementById('cfgHead').textContent='2. 分析配置 '+(b.classList.contains('hidden')?'▸':'▾');
+};
+document.getElementById('pctToggle').onclick=function(){
+  STATE.pctDisplay=!STATE.pctDisplay;
+  this.classList.toggle('on',STATE.pctDisplay);
+  renderTable(STATE.filtered);
+};
+document.getElementById('colorToggle').onclick=function(){
+  STATE.colorOn=!STATE.colorOn;
+  this.classList.toggle('on',STATE.colorOn);
+  renderTable(STATE.filtered);
+};
+document.getElementById('resetFilter').onclick=()=>{
+  STATE.matchFilter=new Set();STATE.ranges={};STATE.termSearch='';
+  document.querySelectorAll('input[data-r]').forEach(i=>i.value='');
+  const ts=document.getElementById('termSearch');if(ts)ts.value='';
+  renderChips();applyAndRender();
+};
+document.getElementById('exportCsv').onclick=exportCsv;
+document.getElementById('sampleBtn').onclick=loadSample;
+document.getElementById('genSuggest').onclick=generateSuggestions;
+document.getElementById('stopwords').oninput=()=>rebuild();
+document.getElementById('decimals').onchange=()=>renderTable(STATE.filtered);
+</script>
+</body>
+</html>
