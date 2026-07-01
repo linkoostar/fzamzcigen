@@ -191,7 +191,8 @@ tbody tr:hover{background:var(--hover)}
 
 </div>
 
-<script>
+<div align="center">
+  <script>
 /* ============ 全局状态 ============ */
 const STATE = {
   rows:[],          // 解析后的原始行 {source,matchType,searchTerm,metrics:{...}}
@@ -380,14 +381,25 @@ function aggregate(tokens){
     o['客单价']=o['购买量']>0?o['销售额']/o['购买量']:0;     // 客单价
     // 位置分：每条记录 (posPoints/posMax)×100，同词根求平均
     o['位置分']=recs.reduce((s,r)=>s+(r.posPoints/r.posMax)*100,0)/n;
-    // 复合得分（平均逻辑）：位置分×表现分×频次权重
-    // 表现分：ROAS映射(0~100, cap在6)，无转化按0
-    const perfScore=o['ROAS']>0?Math.min(o['ROAS']/6,1)*100:0;
     // 频次权重：log平滑，避免高频词过度主导，出现1次权重0.3，10次约0.67，50次约1
     const freqWeight=Math.min(Math.log10(n+1)/Math.log10(51),1);
-    o['复合得分']=(o['位置分']/100)*(perfScore/100)*freqWeight*100;
-    o['perfScore']=perfScore; // 供调试/展示
+    o['freqWeight']=freqWeight;
+    // 表现分和复合得分在第二阶段计算（需要全局ROAS分位数）
     result.push(o);
+  }
+  // 第二阶段：用全局ROAS分位数计算表现分，避免硬编码上限
+  const roasVals=result.map(o=>o['ROAS']).filter(v=>v>0).sort((a,b)=>a-b);
+  const roasP67=roasVals.length>=3?roasVals[Math.floor(roasVals.length*0.67)]:(roasVals.length?roasVals[roasVals.length-1]:6);
+  const roasP33=roasVals.length>=3?roasVals[Math.floor(roasVals.length*0.33)]:(roasVals.length?roasVals[0]:2);
+  for(const o of result){
+    // 表现分：ROAS>=p67满分，>=p33及格(50分)，线性映射，无转化0分
+    let perfScore;
+    if(o['ROAS']<=0) perfScore=0;
+    else if(o['ROAS']>=roasP67) perfScore=100;
+    else if(o['ROAS']>=roasP33) perfScore=50+(o['ROAS']-roasP33)/(roasP67-roasP33)*50;
+    else perfScore=o['ROAS']/roasP33*50;
+    o['perfScore']=perfScore;
+    o['复合得分']=(o['位置分']/100)*(perfScore/100)*o['freqWeight']*100;
   }
   return result;
 }
@@ -408,7 +420,7 @@ const METRICS=[
   {key:'CPA',label:'CPA',cost:true,tip:'= 总成本 ÷ 购买量。每促成一单的广告成本，越低越好。0表示无购买'},
   {key:'客单价',label:'客单价',cost:true,tip:'= 销售额 ÷ 购买量。该词根关联商品的客单价。0表示无购买'},
   {key:'位置分',label:'位置分',score:true,tip:'词根在搜索词中的位置得分(0~100)。第1位得N分(词根数)，末位得1分，线性递减。同一词根所有出现求平均。越靠前得分越高，代表买家核心意图词'},
-  {key:'复合得分',label:'复合得分',score:true,tip:'综合评价分(0~100)。= 位置分 × 表现分 × 频次权重。表现分=ROAS映射(ROAS=6时满分)；频次权重=log平滑(出现越多权重越高但递减)。用于组词建议的排序依据'},
+  {key:'复合得分',label:'复合得分',score:true,tip:'综合评价分(0~100)。= 位置分 × 表现分 × 频次权重。表现分由ROAS自适应分位数映射(达到数据Top33%即满分)；频次权重=log平滑(出现越多权重越高但递减)。用于组词建议的排序依据'},
 ];
 
 /* ============ 渲染：文件列表 ============ */
@@ -903,6 +915,7 @@ document.getElementById('genSuggest').onclick=generateSuggestions;
 document.getElementById('stopwords').oninput=()=>rebuild();
 document.getElementById('decimals').onchange=()=>renderTable(STATE.filtered);
 </script>
-<p align="center">@2026 亚马逊广告词词根分析工具byDONGDONG </p>
+</div>
+<p align="center">@2026 亚马逊广告词根分析工具byDONGDONG </p>  
 </body>
 </html>
