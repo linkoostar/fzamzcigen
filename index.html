@@ -315,9 +315,9 @@ tbody tr:hover{background:var(--hover)}
       <div style="display:flex;gap:6px;align-items:center">
         <label class="lbl" style="margin:0">组词长度</label>
         <select id="comboLen" style="padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
-          <option value="3">2~3词（大词）</option>
-          <option value="4" selected>2~4词</option>
-          <option value="5">2~5词（含长尾）</option>
+          <option value="2-3">2~3词（大词）</option>
+          <option value="3-4" selected>3~4词</option>
+          <option value="4-5">4~5词（含长尾）</option>
         </select>
       </div>
       <div style="display:flex;gap:6px;align-items:center">
@@ -1158,7 +1158,10 @@ function exportCsv(){
   const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download='词根汇总_'+new Date().toISOString().slice(0,10)+'.csv';
+  const rnd2=Math.random().toString(36).slice(2,6);
+  const cur2=STATE.curFilter?('_'+STATE.curFilter):'';
+  const asin2=STATE.asinFilter?('_'+STATE.asinFilter):'';
+  a.download=`词根汇总${cur2}${asin2}_${new Date().toISOString().slice(0,10)}_${rnd2}.csv`;
   a.click();
 }
 function csvCell(v){
@@ -1183,7 +1186,12 @@ function exportSuggestionsCsv(){
   const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download='组词建议_'+new Date().toISOString().slice(0,10)+'.csv';
+  const topN=document.getElementById('topN')?.value||'';
+  const comboLen=document.getElementById('comboLen')?.value||'';
+  const rnd=Math.random().toString(36).slice(2,6);
+  const cur=STATE.curFilter?('_'+STATE.curFilter):'';
+  const asin=STATE.asinFilter?('_'+STATE.asinFilter):'';
+  a.download=`组词建议_top${topN}_${comboLen}词${cur}${asin}_${new Date().toISOString().slice(0,10)}_${rnd}.csv`;
   a.click();
 }
 
@@ -1215,12 +1223,13 @@ function generateSuggestions(){
     termTokens.push({term:row.searchTerm, tokens:new Set(toks), m:row.metrics, matchType:row.matchType, scheme:row.scheme||''});
   }
 
-  // 生成2~maxLen词组合
+  // 生成minLen~maxLen词组合
   // 原逻辑是对 Top词根池 做纯数学组合（C(topN,2..maxLen)），生成完了再逐个去和所有搜索词比对共现——
   // topN和maxLen稍大就是几十万级组合，报告一大浏览器会卡死，而且绝大多数组合根本没在任何真实搜索词里出现过。
   // 改成反过来：直接遍历每条真实搜索词，取它的分词集合和Top词根池的交集，只在这个交集里生成子集——
   // 这样生成的组合天然保证「至少有1条真实搜索词命中」，计算量只和报告行数、单条搜索词长度有关，不会指数爆炸。
-  const maxLen=parseInt(document.getElementById('comboLen').value)||3;
+  const comboLenVal=document.getElementById('comboLen').value;
+  const [cMinLen,cMaxLen]=comboLenVal.split('-').map(Number);
   const poolSet=new Set(pool.map(r=>r['词根']));
   // 词根→位置分映射（用于组合内词根按位置分排序，使组合显示更符合买家搜索习惯）
   const posScoreMap={};
@@ -1229,11 +1238,11 @@ function generateSuggestions(){
   for(const t of termTokens){
     // 交集内按位置分降序排列，位置分高的排前面
     const inter=[...t.tokens].filter(w=>poolSet.has(w)).sort((a,b)=>(posScoreMap[b]||0)-(posScoreMap[a]||0));
-    if(inter.length<2) continue;
-    const m=Math.min(maxLen,inter.length);
-    // 在交集内生成2~m词子集
+    if(inter.length<cMinLen) continue;
+    const m=Math.min(cMaxLen,inter.length);
+    // 在交集内生成cMinLen~m词子集
     (function genSub(start,arr){
-      if(arr.length>=2){
+      if(arr.length>=cMinLen){
         const key=arr.join('\u0001');
         if(!comboMap.has(key)) comboMap.set(key,{comboArr:[...arr],hits:[]});
         comboMap.get(key).hits.push(t);
