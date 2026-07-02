@@ -339,9 +339,9 @@ tbody tr:hover{background:var(--hover)}
 
 </div>
 
-<div class="modal-overlay hidden" id="modalOverlay" onclick="if(event.target===this)closeSampleModal()">
+<div class="modal-overlay hidden" id="modalOverlay" onClick="if(event.target===this)closeSampleModal()">
   <div class="modal-box">
-    <div class="modal-head"><h3 id="modalTitle"></h3><span class="modal-close" onclick="closeSampleModal()">✕</span></div>
+    <div class="modal-head"><h3 id="modalTitle"></h3><span class="modal-close" onClick="closeSampleModal()">✕</span></div>
     <div class="modal-body" id="modalBody"></div>
   </div>
 </div>
@@ -1221,9 +1221,13 @@ function generateSuggestions(){
   // 这样生成的组合天然保证「至少有1条真实搜索词命中」，计算量只和报告行数、单条搜索词长度有关，不会指数爆炸。
   const maxLen=parseInt(document.getElementById('comboLen').value)||3;
   const poolSet=new Set(pool.map(r=>r['词根']));
+  // 词根→位置分映射（用于组合内词根按位置分排序，使组合显示更符合买家搜索习惯）
+  const posScoreMap={};
+  pool.forEach(r=>posScoreMap[r['词根']]=r['位置分']||0);
   const comboMap=new Map(); // key(词已排序拼接) -> {comboArr, hits:[]}
   for(const t of termTokens){
-    const inter=[...t.tokens].filter(w=>poolSet.has(w)).sort();
+    // 交集内按位置分降序排列，位置分高的排前面
+    const inter=[...t.tokens].filter(w=>poolSet.has(w)).sort((a,b)=>(posScoreMap[b]||0)-(posScoreMap[a]||0));
     if(inter.length<2) continue;
     const m=Math.min(maxLen,inter.length);
     // 在交集内生成2~m词子集
