@@ -310,13 +310,13 @@ tbody tr:hover{background:var(--hover)}
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <div style="display:flex;gap:6px;align-items:center">
         <label class="lbl" style="margin:0">Top词根数</label>
-        <input type="number" id="topN" value="10" min="3" max="30" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+        <input type="number" id="topN" value="15" min="3" max="30" style="width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
       </div>
       <div style="display:flex;gap:6px;align-items:center">
         <label class="lbl" style="margin:0">组词长度</label>
         <select id="comboLen" style="padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
           <option value="3">2~3词（大词）</option>
-          <option value="4">2~4词</option>
+          <option value="4" selected>2~4词</option>
           <option value="5">2~5词（含长尾）</option>
         </select>
       </div>
@@ -1169,13 +1169,14 @@ function csvCell(v){
 function exportSuggestionsCsv(){
   const data=STATE.suggestionsView&&STATE.suggestionsView.length?STATE.suggestionsView:STATE.suggestions;
   if(!data.length){alert('还没有组词建议数据，先点「生成建议」');return;}
-  const header=['词根组合','词数','组词得分','覆盖词数','展示量','点击量','点击率','总成本','购买量','销售额','ROAS','购买率','全部示例搜索词(含投放方案)'];
+  const header=['词根组合','词数','组词得分','覆盖词数','展示量','点击量','总成本','购买量','销售额','ROAS','转化词占比','全部示例搜索词(含投放方案)'];
   const lines=[header.map(csvCell).join(',')];
   for(const d of data){
     lines.push([
-      d.combo,d.wordCount,fmt(d.comboScore,1),d.hitCount,
-      fmt(d.展示量,0),fmt(d.点击量,0),fmt(d.点击率*100,2)+'%',fmt(d.总成本,2),
-      fmt(d.购买量,0),fmt(d.销售额,2),fmt(d.ROAS,2),fmt(d.购买率*100,2)+'%',
+      d.combo.replace(/ \+ /g,' '),d.wordCount,fmt(d.comboScore,1),d.hitCount,
+      fmt(d.展示量,0),fmt(d.点击量,0),fmt(d.总成本,2),
+      fmt(d.购买量,0),fmt(d.销售额,2),fmt(d.ROAS,2),
+      `${d.convertedTerms}/${d.hitCount} (${fmt(d.转化词占比*100,1)}%)`,
       d.allTerms.map(t=>t.term+(t.matchType?'['+t.matchType+']':'')).join(';'),
     ].map(csvCell).join(','));
   }
@@ -1258,8 +1259,9 @@ function generateSuggestions(){
     const sum=(k)=>hits.reduce((s,h)=>s+h.m[k],0);
     const imp=sum('展示量'),cli=sum('点击量'),cost=sum('总成本'),pur=sum('购买量'),sales=sum('销售额');
     const roas=cost>0?sales/cost:0;
-    const cvr=cli>0?pur/cli:0;
-    const ctr=imp>0?cli/imp:0;
+    // 转化词占比=有购买的搜索词数 ÷ 覆盖词数（不受单条展示量大小影响，比购买率更有参考意义）
+    const convertedTerms=hits.filter(h=>h.m['购买量']>0).length;
+    const convertRatio=hits.length>0?convertedTerms/hits.length:0;
     // 组词得分=各词根复合得分的平均值（按词数归一化，避免长词虚高）
     const comboScore=combo.reduce((s,w)=>s+(scoreMap[w]||0),0)/combo.length;
     results.push({
@@ -1268,8 +1270,10 @@ function generateSuggestions(){
       wordCount:wordCount,
       comboScore:comboScore,
       hitCount:hits.length,
-      展示量:imp,点击量:cli,点击率:ctr,总成本:cost,
-      购买量:pur,销售额:sales,ROAS:roas,购买率:cvr,
+      展示量:imp,点击量:cli,总成本:cost,
+      购买量:pur,销售额:sales,ROAS:roas,
+      convertedTerms:convertedTerms,
+      转化词占比:convertRatio,
       sampleTerms:hits.slice(0,3).map(h=>({term:h.term,scheme:h.scheme,matchType:h.matchType})),
       allTerms:hits.map(h=>({term:h.term,展示量:h.m['展示量'],点击量:h.m['点击量'],总成本:h.m['总成本'],购买量:h.m['购买量'],销售额:h.m['销售额'],scheme:h.scheme,matchType:h.matchType})),
     });
@@ -1294,12 +1298,11 @@ function renderSuggestions(data){
     {k:'hitCount',l:'覆盖词数',int:true,tip:'历史搜索词中同时包含该组合所有词根的搜索词数量。越多说明该组合越有真实需求支撑，数据越可靠'},
     {k:'展示量',l:'展示量',int:true,tip:'所有共现搜索词的展示量之和（真实值，非均摊）'},
     {k:'点击量',l:'点击量',int:true,tip:'所有共现搜索词的点击量之和（真实值，非均摊）'},
-    {k:'点击率',l:'点击率',pct:true,tip:'= 点击量 ÷ 展示量。基于共现搜索词真实汇总'},
     {k:'总成本',l:'总成本',cost:true,tip:'所有共现搜索词的广告花费之和（真实值，非均摊）'},
     {k:'购买量',l:'购买量',int:true,tip:'所有共现搜索词的归因购买数之和（真实值，非均摊）'},
     {k:'销售额',l:'销售额',cost:true,tip:'所有共现搜索词的归因销售额之和（真实值，非均摊）'},
     {k:'ROAS',l:'ROAS',tip:'= 销售额 ÷ 总成本。基于共现搜索词真实汇总。默认按此列降序排列，反映该组合的历史盈利能力'},
-    {k:'购买率',l:'购买率',pct:true,tip:'= 购买量 ÷ 点击量。基于共现搜索词真实汇总，反映该组合的转化能力'},
+    {k:'转化词占比',l:'转化词占比',pct:true,tip:'= 有购买的搜索词数 ÷ 覆盖词数。回答"这个组合下有多少比例的搜索词能带来转化"，不受单条展示量大小影响，比购买率更有参考意义'},
     {k:'sample',l:'示例搜索词',left:true,tip:'同时包含该组合所有词根的真实搜索词示例（最多展示3个）'},
   ];
   let h='';
@@ -1340,7 +1343,7 @@ function sortAndRenderSuggest(){
   const dec=parseInt(document.getElementById('decimals').value)||2;
   const pct=(v)=>STATE.pctDisplay?fmt(v*100,dec)+'%':fmt(v,dec);
   STATE.suggestionsView=data; // 供「查看全部示例词」弹窗和导出CSV按当前排序引用
-  if(!data.length){tb.innerHTML='<tr><td colspan="13" style="text-align:center;color:var(--muted);padding:30px">无共现数据的组合</td></tr>';return;}
+  if(!data.length){tb.innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:30px">无共现数据的组合</td></tr>';return;}
   // 投放方案标签渲染
   function schemeTag(scheme,matchType){
     if(!scheme && !matchType) return '';
@@ -1354,7 +1357,7 @@ function sortAndRenderSuggest(){
   }
   tb.innerHTML=data.map((d,i)=>{
     let roasPill=d.ROAS>=4?'pill-good':d.ROAS>=2?'pill-warn':d.ROAS>0?'pill-bad':'';
-    let cvrPill=d.购买率>=0.15?'pill-good':d.购买率>=0.05?'pill-warn':d.购买率>0?'pill-bad':'';
+    let convPill=d.转化词占比>=0.5?'pill-good':d.转化词占比>=0.2?'pill-warn':'pill-bad';
     let scorePill=d.comboScore>=60?'pill-good':d.comboScore>=30?'pill-warn':'pill-bad';
     const color=STATE.colorOn;
     const moreLink=d.allTerms.length>3?` <a href="javascript:void(0)" onclick="openSampleModal(${i})" style="color:var(--primary);font-weight:600">查看全部(${d.allTerms.length})</a>`:'';
@@ -1366,12 +1369,11 @@ function sortAndRenderSuggest(){
       <td>${d.hitCount}</td>
       <td>${fmt(d.展示量,0)}</td>
       <td>${fmt(d.点击量,0)}</td>
-      <td>${pct(d.点击率)}</td>
       <td>${fmt(d.总成本,dec)}</td>
       <td>${fmt(d.购买量,0)}</td>
       <td>${fmt(d.销售额,dec)}</td>
       <td>${color?`<span class="pill ${roasPill}">${fmt(d.ROAS,dec)}</span>`:fmt(d.ROAS,dec)}</td>
-      <td>${color?`<span class="pill ${cvrPill}">${pct(d.购买率)}</span>`:pct(d.购买率)}</td>
+      <td>${color?`<span class="pill ${convPill}">${pct(d.转化词占比)} (${d.convertedTerms}/${d.hitCount})</span>`:`${pct(d.转化词占比)} (${d.convertedTerms}/${d.hitCount})`}</td>
       <td class="tl" style="max-width:320px;font-size:12px;line-height:1.8">
         ${sampleHtml}${moreLink}
       </td>
