@@ -765,8 +765,7 @@ function aggregate(tokens){
 const METRICS=[
   {key:'位置分',label:'位置分',score:true,tip:'词根在搜索词中的位置得分(0~100)。第1位(最左)得N分(N=该搜索词的词根数)，末位得1分，线性递减。同一词根所有出现求平均。越靠前得分越高，代表买家核心意图词。例："gloves"在"men winter gloves"第3位(共3词根)→得1分'},
   {key:'复合得分',label:'复合得分',score:true,tip:'综合评价分(0~100)。= 表现分×权重 + 位置分×权重 + 频次权重×权重。权重可在分析配置区调节(默认60/20/20)。转化(表现分)占主导，位置仅作辅助。用于组词建议的候选词根筛选'},
-  {key:'出现次数',label:'出现次数',int:true,src:false,tip:'该词根在所有搜索词中出现的总次数（每条搜索词计1次，含重复出现）。例：搜索词"gloves for men"和"winter gloves"都含gloves，则gloves出现次数=2'},
-  {key:'搜索词覆盖数',label:'搜索词覆盖数',int:true,src:false,tip:'该词根出现在多少条不同搜索词里。比"出现次数"更能反映触达了多少种买家意图——10条词各出现1次(覆盖10)比3条词各出现3次(覆盖3)价值更高'},
+  {key:'出现次数',label:'词根出现次数',int:true,src:false,tip:'该词根在所有搜索词中出现的总次数（每条搜索词计1次）。例：搜索词"gloves for men"和"winter gloves"都含gloves，则gloves词根出现次数=2'},
   {key:'展示量',label:'展示量',oneDec:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的展示量之和。反映该词根触达的流量规模。⚠️跨词根相加会重复(同一搜索词的展示量被多个词根各计1次)，仅用于单词根间横向比较，不能当总展示量用'},
   {key:'点击量',label:'点击量',oneDec:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的点击量之和。⚠️跨词根相加会重复，仅用于单词根间比较'},
   {key:'点击率',label:'点击率',pct:true,tip:'= 点击量 ÷ 展示量。从汇总量重算，非简单平均。反映该词根触达流量的点击效率'},
@@ -1177,11 +1176,11 @@ function esc(s){return String(s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&'
 /* ============ 导出 CSV ============ */
 function exportCsv(){
   if(!STATE.filtered.length) return;
-  const cols=[{key:'词根'},...METRICS.map(m=>({key:m.key})),{key:'出现次数'},{key:'匹配类型'}];
-  const header=['词根','出现次数',...METRICS.map(m=>m.label),'匹配类型'];
+  const cols=[{key:'词根'},...METRICS.map(m=>({key:m.key})),{key:'匹配类型'}];
+  const header=['词根',...METRICS.map(m=>m.label),'匹配类型'];
   const lines=[header.map(csvCell).join(',')];
   for(const d of STATE.filtered){
-    lines.push(['词根','出现次数',...METRICS.map(m=>m.key),'匹配类型'].map(k=>csvCell(d[k])).join(','));
+    lines.push(['词根',...METRICS.map(m=>m.key),'匹配类型'].map(k=>csvCell(d[k])).join(','));
   }
   const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');
