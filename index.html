@@ -483,9 +483,17 @@ function parseCSV(text){
 function toObj(rows){
   if(!rows.length) return [];
   const h=rows[0].map(x=>x.trim());
+  const addedIdx=h.indexOf('已添加为');
+  let lastAdded='';
   return rows.slice(1).map(r=>{
     const o={};
     h.forEach((k,i)=>o[k]=r[i]!==undefined?r[i].trim():'');
+    // Forward fill: 亚马逊"关键词: xxx匹配"是分组标题行，后续数据行的"已添加为"为空
+    if(addedIdx>=0 && (o['已添加为']===''||o['已添加为']===undefined||o['已添加为']==='-')){
+      if(lastAdded) o['已添加为']=lastAdded;
+    } else if(o['已添加为']) {
+      lastAdded=o['已添加为'];
+    }
     return o;
   });
 }
