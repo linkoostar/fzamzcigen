@@ -666,13 +666,18 @@ function splitTokens(text, type, stopwords){
   parts=expanded;
 
   // 复数归一（仅对纯 ASCII 字母词，不影响日文/CJK）
-  parts=parts.map(t=>/^[a-z]+$/.test(t)?singularize(t):t);
+  // 不再强制替换原词，改为同时保留原词和单数形，由用户判断是否需要合并
+  parts=parts.map(t=>{
+    if(!/^[a-z]+$/.test(t)) return {orig:t,sing:t};
+    const s=singularize(t);
+    return {orig:t,sing:s};
+  });
 
   return parts.filter(t=>{
-    if(stopwords.has(t)) return false;
-    if(t.length<minLen) return false;
-    if(filterNum&&/^\d+$/.test(t)) return false;
-    if(filterSpec&&SPEC_WORDS.has(t)) return false;
+    if(stopwords.has(t.orig)) return false;
+    if(t.orig.length<minLen) return false;
+    if(filterNum&&/^\d+$/.test(t.orig)) return false;
+    if(filterSpec&&SPEC_WORDS.has(t.orig)) return false;
     return true;
   });
 }
@@ -694,7 +699,7 @@ function allocate(row, stopwords){
   return tokens.map((t,i)=>{
     const posPoints=N-i; // i从0开始，第1位(i=0)得N分，末位得1分
     return {
-      '词根':t,'matchType':row.matchType,'source':row.source,'searchTerm':row.searchTerm,
+      '词根':t.orig,'单数形':t.sing,'matchType':row.matchType,'source':row.source,'searchTerm':row.searchTerm,
       // 主指标：关联口径（完整值，不÷N）
       '展示量':m['展示量'],
       '点击量':m['点击量'],
@@ -725,18 +730,21 @@ const AVG_KEYS=['均摊展示量','均摊点击量','均摊总成本','均摊购
 function aggregate(tokens){
   const map=new Map();
   for(const t of tokens){
-    if(!map.has(t['词根'])) map.set(t['词根'],{词根:t['词根'],records:[],sources:new Set(),matches:new Set(),searchTerms:[]});
+    if(!map.has(t['词根'])) map.set(t['词根'],{词根:t['词根'],单数形:t['单数形'],records:[],sources:new Set(),matches:new Set(),searchTerms:[]});
     const g=map.get(t['词根']);
     g.records.push(t);
     g.sources.add(t.source);
     g.matches.add(t.matchType);
     if(!g.searchTerms.includes(t.searchTerm)) g.searchTerms.push(t.searchTerm);
+    // 单数形追踪：如果有不同的单数形，记录下来
+    if(t['单数形']!==t['词根'] && !g.singForms) g.singForms=new Set();
+    if(t['单数形']!==t['词根']) g.singForms.add(t['单数形']);
   }
   const result=[];
   for(const g of map.values()){
     const recs=g.records;
     const n=recs.length;
-    const o={'词根':g.词根,'出现次数':n,'搜索词覆盖数':g.searchTerms.length,'来源数':g.sources.size,'匹配类型':Array.from(g.matches).join(' / '),'searchTerms':g.searchTerms};
+    const o={'词根':g.词根,'单数形':g.singForms?Array.from(g.singForms).join('/'):(g.词根!==g.单数形?g.单数形:''),'出现次数':n,'搜索词覆盖数':g.searchTerms.length,'来源数':g.sources.size,'匹配类型':Array.from(g.matches).join(' / '),'searchTerms':g.searchTerms};
     // 主指标（关联口径）求和
     for(const k of SUM_KEYS) o[k]=recs.reduce((s,r)=>s+r[k],0);
     // 均摊参考列求和（÷N口径，满足总量守恒）
@@ -790,23 +798,24 @@ function aggregate(tokens){
 
 /* ============ 指标元数据（用于表格列/筛选） ============ */
 const METRICS=[
-  {key:'位置分',label:'位置分',score:true,tip:'词根在搜索词中的位置得分(0~100)。第1位得N分(词根数)，末位得1分，线性递减。同一词根所有出现求平均。越靠前得分越高，代表买家核心意图词'},
+  {key:'位置分',label:'位置分',score:true,tip:'词根在搜索词中的位置得分(0~100)。第1位(最左)得N分(N=该搜索词的词根数)，末位得1分，线性递减。同一词根所有出现求平均。越靠前得分越高，代表买家核心意图词。例："gloves"在"men winter gloves"第3位(共3词根)→得1分'},
   {key:'复合得分',label:'复合得分',score:true,tip:'综合评价分(0~100)。= 表现分×权重 + 位置分×权重 + 频次权重×权重。权重可在分析配置区调节(默认60/20/20)。转化(表现分)占主导，位置仅作辅助。用于组词建议的候选词根筛选'},
-  {key:'出现次数',label:'出现次数',int:true,src:false,tip:'该词根在所有搜索词中出现的总次数（每条搜索词计1次，含重复出现）'},
+  {key:'出现次数',label:'出现次数',int:true,src:false,tip:'该词根在所有搜索词中出现的总次数（每条搜索词计1次，含重复出现）。例：搜索词"gloves for men"和"winter gloves"都含gloves，则gloves出现次数=2'},
   {key:'搜索词覆盖数',label:'搜索词覆盖数',int:true,src:false,tip:'该词根出现在多少条不同搜索词里。比"出现次数"更能反映触达了多少种买家意图——10条词各出现1次(覆盖10)比3条词各出现3次(覆盖3)价值更高'},
-  {key:'展示量',label:'展示量',oneDec:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的展示量之和。反映该词根触达的流量规模，跨词根相加会重复，仅用于单词根间比较'},
-  {key:'点击量',label:'点击量',oneDec:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的点击量之和'},
-  {key:'点击率',label:'点击率',pct:true,tip:'= 点击量 ÷ 展示量。从汇总量重算，非简单平均'},
-  {key:'总成本',label:'总成本',cost:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的广告花费之和'},
-  {key:'CPC',label:'CPC',cost:true,tip:'= 总成本 ÷ 点击量。从汇总量重算，非简单平均'},
-  {key:'购买量',label:'购买量',oneDec:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的归因购买数之和'},
-  {key:'销售额',label:'销售额',cost:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的归因销售额之和。反映该词根参与的转化价值，符合亚马逊"整笔订单归给搜索词"的归因逻辑'},
-  {key:'ACOS',label:'ACOS',pct:true,tip:'= 总成本 ÷ 销售额。越低越好，0表示无花费或无销售'},
-  {key:'ROAS',label:'ROAS',tip:'= 销售额 ÷ 总成本。越高越好，0表示无花费或无销售'},
-  {key:'购买率',label:'购买率',pct:true,tip:'= 购买量 ÷ 点击量。即转化率，从汇总量重算'},
+  {key:'展示量',label:'展示量',oneDec:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的展示量之和。反映该词根触达的流量规模。⚠️跨词根相加会重复(同一搜索词的展示量被多个词根各计1次)，仅用于单词根间横向比较，不能当总展示量用'},
+  {key:'点击量',label:'点击量',oneDec:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的点击量之和。⚠️跨词根相加会重复，仅用于单词根间比较'},
+  {key:'点击率',label:'点击率',pct:true,tip:'= 点击量 ÷ 展示量。从汇总量重算，非简单平均。反映该词根触达流量的点击效率'},
+  {key:'总成本',label:'总成本',cost:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的广告花费之和。⚠️跨词根相加会重复(同一笔花费被多个词根各计1次)，仅用于单词根间比较，不能当总预算用'},
+  {key:'CPC',label:'CPC',cost:true,tip:'= 总成本 ÷ 点击量。从汇总量重算，非简单平均。每次点击的平均成本，越低越好'},
+  {key:'购买量',label:'购买量',oneDec:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的归因购买数之和。⚠️跨词根相加会重复(同一笔订单被多个词根各计1次)，仅用于单词根间比较'},
+  {key:'销售额',label:'销售额',cost:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的归因销售额之和。符合亚马逊"整笔订单归给搜索词"的归因逻辑。⚠️跨词根相加会重复，仅用于单词根间比较，不能当总销售额用'},
+  {key:'ACOS',label:'ACOS',pct:true,tip:'= 总成本 ÷ 销售额。越低越好，0表示无花费或无销售。反映广告投入产出比，亚马逊广告常用指标'},
+  {key:'ROAS',label:'ROAS',tip:'= 销售额 ÷ 总成本。越高越好，0表示无花费或无销售。每花1元带来多少销售额'},
+  {key:'购买率',label:'购买率',pct:true,tip:'= 购买量 ÷ 点击量。即转化率，从汇总量重算。点击到购买的转化效率'},
   {key:'CPA',label:'CPA',cost:true,tip:'= 总成本 ÷ 购买量。每促成一单的广告成本，越低越好。0表示无购买'},
-  {key:'客单价',label:'客单价',cost:true,tip:'= 销售额 ÷ 购买量。该词根关联商品的客单价。0表示无购买'},
+  {key:'客单价',label:'客单价',cost:true,tip:'= 销售额 ÷ 购买量。该词根关联商品的客单价。0表示无购买。可用来判断该词根吸引的买家是高客单还是低客单'},
   {key:'均摊销售额',label:'均摊销售额',cost:true,src:false,tip:'参考列（÷词根数）：销售额按词根数均摊后的值。满足总量守恒（跨词根相加=总销售额），但会稀释核心词价值。仅供需要估算预算分摊时参考'},
+  {key:'单数形',label:'单数形',src:false,text:true,tip:'将原词做复数归一后的形式(仅作参考)。例：gloves→glove, boxes→box, babies→baby。可用来判断不同复数形式的词根是否其实是同一个词'},
 ];
 
 /* ============ 渲染：文件列表 ============ */
@@ -1043,6 +1052,7 @@ function renderFilters(allMatches){
   const fr=document.getElementById('filtersRange');
   let rangeHtml='';
   for(const m of METRICS){
+    if(m.text) continue; // 文本列不参与范围筛选
     rangeHtml+=`<div class="field"><label class="lbl">${m.label}</label><div class="range-wrap"><input type="number" data-r="${m.key}" data-b="min" placeholder="min"><span>~</span><input type="number" data-r="${m.key}" data-b="max" placeholder="max"></div></div>`;
   }
   fr.innerHTML=rangeHtml;
@@ -1144,14 +1154,15 @@ function fmt(v,dec,isPct){
 function fmtCell(v,m){
   const dec=parseInt(document.getElementById('decimals').value)||2;
   let txt;
-  if(m.int){txt=fmt(Math.round(v),0);}
+  if(m.text){txt=v?esc(v):'-';}
+  else if(m.int){txt=fmt(Math.round(v),0);}
   else if(m.oneDec){txt=fmt(v,1);} // 为均摊的小数列精确保留1位小数
   else if(m.pct){txt=STATE.pctDisplay?fmt(v*100,dec)+'%':fmt(v,dec);}
   else if(m.cost){txt=fmt(v,dec);}
   else if(m.score){txt=fmt(v,1);}
   else{txt=fmt(v,dec);}
   // 着色（自适应分位数：根据当前数据分布动态计算阈值）
-  if(STATE.colorOn){
+  if(STATE.colorOn && !m.text){
     const t=getColorThresholds(m.key);
     if(t){
       let cls='';
@@ -1204,11 +1215,11 @@ function esc(s){return String(s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&'
 /* ============ 导出 CSV ============ */
 function exportCsv(){
   if(!STATE.filtered.length) return;
-  const cols=[{key:'词根'},...METRICS.map(m=>({key:m.key})),{key:'出现次数'},{key:'匹配类型'}];
-  const header=['词根','出现次数',...METRICS.map(m=>m.label),'匹配类型'];
+  const cols=[{key:'词根'},{key:'单数形'},...METRICS.map(m=>({key:m.key})),{key:'出现次数'},{key:'匹配类型'}];
+  const header=['词根','单数形',...METRICS.map(m=>m.label),'出现次数','匹配类型'];
   const lines=[header.map(csvCell).join(',')];
   for(const d of STATE.filtered){
-    lines.push(['词根','出现次数',...METRICS.map(m=>m.key),'匹配类型'].map(k=>csvCell(d[k])).join(','));
+    lines.push(['词根','单数形',...METRICS.map(m=>m.key),'出现次数','匹配类型'].map(k=>csvCell(d[k])).join(','));
   }
   const blob=new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');
@@ -1275,7 +1286,7 @@ function generateSuggestions(){
     if(STATE.isV2 && STATE.asinFilter && row.asin!==STATE.asinFilter) continue;
     const toks=splitTokens(row.searchTerm, row.source, STOP);
     if(toks.length<2) continue;
-    termTokens.push({term:row.searchTerm, tokens:new Set(toks), m:row.metrics, matchType:row.matchType, scheme:row.scheme||''});
+    termTokens.push({term:row.searchTerm, tokens:new Set(toks.map(t=>t.orig)), m:row.metrics, matchType:row.matchType, scheme:row.scheme||''});
   }
 
   // 生成minLen~maxLen词组合
