@@ -112,6 +112,22 @@ tbody tr:hover{background:var(--hover)}
 .modal-close{cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 6px;border-radius:6px}
 .modal-close:hover{background:var(--hover);color:var(--txt)}
 .modal-body{padding:14px 18px;overflow:auto}
+/* AI 结果 markdown 渲染 */
+.ai-md{font-size:13.5px;line-height:1.7;color:var(--txt)}
+.ai-md h1,.ai-md h2,.ai-md h3{margin:16px 0 8px;color:#1e293b}
+.ai-md h1{font-size:17px}.ai-md h2{font-size:15px}.ai-md h3{font-size:14px}
+.ai-md p{margin:8px 0}
+.ai-md ul,.ai-md ol{margin:8px 0;padding-left:22px}
+.ai-md li{margin:4px 0}
+.ai-md code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px;color:#be123c}
+.ai-md pre{background:#1e293b;color:#e2e8f0;padding:12px;border-radius:8px;overflow:auto;margin:10px 0;font-size:12px}
+.ai-md pre code{background:none;color:inherit;padding:0}
+.ai-md strong{color:#1e293b}
+.ai-md blockquote{border-left:3px solid var(--primary);padding-left:12px;color:var(--muted);margin:10px 0}
+.ai-md table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px}
+.ai-md th,.ai-md td{border:1px solid var(--border);padding:6px 9px;text-align:left}
+.ai-md th{background:var(--thead);color:#fff}
+.ai-md hr{border:none;border-top:1px solid var(--border);margin:14px 0}
 </style>
 </head>
 <body>
@@ -238,6 +254,48 @@ tbody tr:hover{background:var(--hover)}
       </div>
     </div>
 
+    <!-- E. AI 分析 -->
+    <div class="cfg-section">
+      <div class="cfg-title">E. AI 分析 <span class="cfg-desc">填入 OpenAI 兼容 API 信息，可一键让 AI 总结数据给建议</span></div>
+      <div class="cfg-grid" style="margin-bottom:12px">
+        <div class="cfg-item">
+          <label class="lbl">API 地址</label>
+          <input type="text" id="aiApiUrl" placeholder="https://api.openai.com" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+          <span class="cfg-hint">如 https://api.openai.com 或自部署地址</span>
+        </div>
+        <div class="cfg-item">
+          <label class="lbl">模型名称</label>
+          <input type="text" id="aiModel" placeholder="gpt-4o-mini" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+        </div>
+        <div class="cfg-item">
+          <label class="lbl">密钥</label>
+          <input type="password" id="aiKey" placeholder="sk-..." style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+          <span class="cfg-hint">仅存本机localStorage，不上传任何第三方</span>
+        </div>
+        <div class="cfg-item">
+          <label class="lbl">发送Top词根数</label>
+          <div class="cfg-inline">
+            <input type="number" id="aiTopN" value="20" min="5" max="50" class="cfg-num">
+            <span class="cfg-hint">发给AI的词根条数</span>
+          </div>
+        </div>
+      </div>
+      <div class="cfg-item" style="margin-top:6px">
+        <label class="lbl">提示词（可改，自动保存）</label>
+        <textarea id="aiPrompt" rows="5" style="font-size:12px">你是资深亚马逊广告优化师。下面是卖家搜索词报告的词根分析数据（JSON）。
+请基于数据给出：
+1. 整体表现诊断（ROAS/ACOS 是否健康，主要问题在哪）
+2. 核心词根分三类：① 建议加投/提价 ② 建议降价观察 ③ 建议否定
+3. 组词建议评估（如果提供）：哪些组合值得开手动，竞价区间建议
+4. 异常发现：是否有词不匹配、创意差、流量异常等
+5. 下一步行动清单（3~5条具体可执行）
+
+要求：给具体数字依据，不要泛泛而谈。ACOS/购买率用百分比。</textarea>
+        <button class="btn btn-ghost btn-sm" id="aiPromptReset" style="margin-top:6px">恢复默认提示词</button>
+      </div>
+      <div class="cfg-tips">💡 密钥仅存本机浏览器，不会上传到任何服务器。每次点「一键问AI」会把当前筛选后的词根数据（含汇总指标）发给填写的API地址。</div>
+    </div>
+
   </div>
 </div>
 
@@ -256,6 +314,7 @@ tbody tr:hover{background:var(--hover)}
     <div style="display:flex;gap:8px">
       <button class="btn btn-ghost btn-sm" id="resetFilter">重置筛选</button>
       <button class="btn btn-ghost btn-sm" id="exportCsv">导出 CSV</button>
+      <button class="btn btn-primary btn-sm" id="askAi">🤖 一键问 AI</button>
     </div>
   </div>
   <div class="toolbar" style="justify-content:flex-start;gap:24px">
@@ -343,6 +402,28 @@ tbody tr:hover{background:var(--hover)}
   <div class="modal-box">
     <div class="modal-head"><h3 id="modalTitle"></h3><span class="modal-close" onClick="closeSampleModal()">✕</span></div>
     <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- AI 结果弹窗 -->
+<div class="modal-overlay hidden" id="aiOverlay" onClick="if(event.target===this)closeAiModal()">
+  <div class="modal-box" style="max-width:820px">
+    <div class="modal-head">
+      <h3 id="aiTitle">🤖 AI 分析结果</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-ghost btn-sm" id="aiCopy" style="display:none">复制</button>
+        <span class="modal-close" onClick="closeAiModal()">✕</span>
+      </div>
+    </div>
+    <div class="modal-body" id="aiBody">
+      <div id="aiLoading" style="text-align:center;padding:40px 20px;color:var(--muted)">
+        <div style="font-size:28px;margin-bottom:12px">⏳</div>
+        <div>AI 分析中，请稍候...</div>
+        <div style="font-size:11px;margin-top:8px">已发送 <span id="aiDataSize">-</span> 数据到 <span id="aiEndpoint">-</span></div>
+      </div>
+      <div id="aiResult" class="ai-md" style="display:none"></div>
+      <div id="aiError" style="display:none;color:var(--red);padding:20px;white-space:pre-wrap;font-size:13px"></div>
+    </div>
   </div>
 </div>
 
@@ -1541,10 +1622,225 @@ document.getElementById('toggleRangeFilters').onclick=function(){
   b.classList.toggle('hidden');
   this.textContent=(b.classList.contains('hidden')?'▸ 展开':'▾ 收起')+'具体指标范围筛选';
 };
+
+/* ============ AI 分析 ============ */
+const AI_DEFAULT_PROMPT=`你是资深亚马逊广告优化师。下面是卖家搜索词报告的词根分析数据（JSON）。
+请基于数据给出：
+1. 整体表现诊断（ROAS/ACOS 是否健康，主要问题在哪）
+2. 核心词根分三类：① 建议加投/提价 ② 建议降价观察 ③ 建议否定
+3. 组词建议评估（如果提供）：哪些组合值得开手动，竞价区间建议
+4. 异常发现：是否有词不匹配、创意差、流量异常等
+5. 下一步行动清单（3~5条具体可执行）
+
+要求：给具体数字依据，不要泛泛而谈。ACOS/购买率用百分比。`;
+
+// 收集当前筛选后的数据，组织成结构化 JSON 给 AI
+function collectAiData(){
+  const data=STATE.filtered;
+  const topN=parseInt(document.getElementById('aiTopN')?.value)||20;
+  // 总览
+  const summary={
+    文件数: fileMetas.length,
+    报告类型: fileMetas.map(f=>typeLabel(f.type)),
+    站点货币: STATE.curFilter||'全部',
+    商品ASIN: STATE.asinFilter||'全部',
+    词根总数: STATE.agg.length,
+    当前筛选词根数: data.length,
+  };
+  // 汇总指标
+  const totals=data.reduce((s,d)=>{
+    s.展示量+=d['展示量']||0; s.点击量+=d['点击量']||0;
+    s.总成本+=d['总成本']||0; s.销售额+=d['销售额']||0;
+    s.购买量+=d['购买量']||0; return s;
+  },{展示量:0,点击量:0,总成本:0,销售额:0,购买量:0});
+  totals.整体ROAS=totals.总成本>0?+(totals.销售额/totals.总成本).toFixed(2):0;
+  totals.整体ACOS=totals.销售额>0?+(totals.总成本/totals.销售额*100).toFixed(1)+'%':'-';
+  totals.整体CTR=totals.展示量>0?+(totals.点击量/totals.展示量*100).toFixed(2)+'%':'-';
+  totals.整体购买率=totals.点击量>0?+(totals.购买量/totals.点击量*100).toFixed(2)+'%':'-';
+  totals.整体CPC=totals.点击量>0?+(totals.总成本/totals.点击量).toFixed(2):0;
+  // Top 词根（按展示量降序取前N）
+  const topRoots=data.slice().sort((a,b)=>(b['展示量']||0)-(a['展示量']||0)).slice(0,topN).map(d=>({
+    词根:d['词根'],
+    出现次数:d['出现次数'],
+    位置分:+(d['位置分']||0).toFixed(1),
+    复合得分:+(d['复合得分']||0).toFixed(1),
+    展示量:Math.round(d['展示量']||0),
+    点击量:Math.round(d['点击量']||0),
+    点击率:d['展示量']>0?+(d['点击量']/d['展示量']*100).toFixed(2)+'%':'-',
+    CPC:+(d['CPC']||0).toFixed(2),
+    总成本:+(d['总成本']||0).toFixed(2),
+    销售额:+(d['销售额']||0).toFixed(2),
+    购买量:+(d['购买量']||0).toFixed(1),
+    ACOS:d['销售额']>0?+(d['总成本']/d['销售额']*100).toFixed(1)+'%':'-',
+    ROAS:+(d['ROAS']||0).toFixed(2),
+    购买率:d['点击量']>0?+(d['购买量']/d['点击量']*100).toFixed(2)+'%':'-',
+    CPA:+(d['CPA']||0).toFixed(2),
+    客单价:+(d['客单价']||0).toFixed(2),
+    匹配类型:d['匹配类型'],
+  }));
+  // 极端值词根
+  const wasteRoots=data.filter(d=>(d['总成本']||0)>=1&&(d['购买量']||0)===0).sort((a,b)=>(b['总成本']||0)-(a['总成本']||0)).slice(0,10).map(d=>({词根:d['词根'],总成本:+d['总成本'].toFixed(2),展示量:Math.round(d['展示量']||0),点击量:Math.round(d['点击量']||0),匹配类型:d['匹配类型']}));
+  const bestRoots=data.filter(d=>(d['ROAS']||0)>0&&(d['展示量']||0)>0).sort((a,b)=>(b['ROAS']||0)-(a['ROAS']||0)).slice(0,10).map(d=>({词根:d['词根'],ROAS:+d['ROAS'].toFixed(2),销售额:+d['销售额'].toFixed(2),展示量:Math.round(d['展示量']||0),匹配类型:d['匹配类型']}));
+  const lowCtrRoots=data.filter(d=>(d['展示量']||0)>=100).sort((a,b)=>(a['点击量']/Math.max(1,a['展示量']))-(b['点击量']/Math.max(1,b['展示量']))).slice(0,10).map(d=>({词根:d['词根'],展示量:Math.round(d['展示量']||0),点击率:+(d['点击量']/Math.max(1,d['展示量'])*100).toFixed(2)+'%',点击量:Math.round(d['点击量']||0),匹配类型:d['匹配类型']}));
+  // 组词建议（若已生成）
+  let suggestions=null;
+  if(STATE.suggestions&&STATE.suggestions.length){
+    suggestions=STATE.suggestions.slice(0,10).map(s=>({
+      组合:s.combo,
+      词数:s.wordCount,
+      综合分:+(s.综合分||0).toFixed(2),
+      组词得分:+(s.comboScore||0).toFixed(1),
+      覆盖词数:s.hitCount,
+      展示量:Math.round(s['展示量']||0),
+      总成本:+(s['总成本']||0).toFixed(2),
+      销售额:+(s['销售额']||0).toFixed(2),
+      ROAS:+(s['ROAS']||0).toFixed(2),
+      转化词占比:s.hitCount>0?+(s.convertedTerms/s.hitCount*100).toFixed(1)+'%':'-',
+    }));
+  }
+  return {summary,totals,topRoots,wasteRoots,bestRoots,lowCtrRoots,suggestions};
+}
+
+// 极简 markdown 渲染（不引外部库）
+function renderMd(md){
+  if(!md) return '';
+  let h=md;
+  // 代码块
+  h=h.replace(/```(\w*)\n?([\s\S]*?)```/g,(m,lang,code)=>`<pre><code>${esc(code.trim())}</code></pre>`);
+  // 转义剩余 HTML
+  h=h.replace(/`([^`]+)`/g,(m,c)=>`<code>${esc(c)}</code>`);
+  // 标题
+  h=h.replace(/^### (.+)$/gm,'<h3>$1</h3>');
+  h=h.replace(/^## (.+)$/gm,'<h2>$1</h2>');
+  h=h.replace(/^# (.+)$/gm,'<h1>$1</h1>');
+  // 分割线
+  h=h.replace(/^---$/gm,'<hr>');
+  // 引用
+  h=h.replace(/^> (.+)$/gm,'<blockquote>$1</blockquote>');
+  // 粗体/斜体
+  h=h.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+  h=h.replace(/\*([^*]+)\*/g,'<em>$1</em>');
+  // 表格
+  const lines=h.split('\n');
+  let out=[],inTable=false,tableRows=[];
+  for(const line of lines){
+    if(/^\|(.+\|)+\s*$/.test(line.trim())){
+      const cells=line.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      if(cells.every(c=>/^[-:]+$/.test(c))){continue;} // 分隔行
+      tableRows.push(cells);
+      inTable=true;
+    } else {
+      if(inTable&&tableRows.length){
+        let t='<table><thead><tr>'+tableRows[0].map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>';
+        for(let i=1;i<tableRows.length;i++) t+='<tr>'+tableRows[i].map(c=>`<td>${c}</td>`).join('')+'</tr>';
+        t+='</tbody></table>';
+        out.push(t); tableRows=[]; inTable=false;
+      }
+      out.push(line);
+    }
+  }
+  if(inTable&&tableRows.length){
+    let t='<table><thead><tr>'+tableRows[0].map(c=>`<th>${c}</th>`).join('')+'</tr></thead><tbody>';
+    for(let i=1;i<tableRows.length;i++) t+='<tr>'+tableRows[i].map(c=>`<td>${c}</td>`).join('')+'</tr>';
+    t+='</tbody></table>';
+    out.push(t);
+  }
+  h=out.join('\n');
+  // 列表
+  h=h.replace(/(?:^|\n)((?:\s*[-*] .+\n?)+)/g,(m,list)=>{
+    const items=list.trim().split('\n').map(l=>l.replace(/^\s*[-*] /,'')).map(l=>`<li>${l}</li>`).join('');
+    return `\n<ul>${items}</ul>`;
+  });
+  h=h.replace(/(?:^|\n)((?:\s*\d+\. .+\n?)+)/g,(m,list)=>{
+    const items=list.trim().split('\n').map(l=>l.replace(/^\s*\d+\. /,'')).map(l=>`<li>${l}</li>`).join('');
+    return `\n<ol>${items}</ol>`;
+  });
+  // 段落（连续非标签行）
+  h=h.split('\n\n').map(p=>{
+    if(/^\s*<(h\d|ul|ol|pre|blockquote|table|hr)/.test(p.trim())) return p;
+    if(p.trim()==='') return '';
+    return `<p>${p.trim().replace(/\n/g,'<br>')}</p>`;
+  }).join('\n');
+  return h;
+}
+
+function showAiLoading(dataSize,endpoint){
+  document.getElementById('aiLoading').style.display='block';
+  document.getElementById('aiResult').style.display='none';
+  document.getElementById('aiError').style.display='none';
+  document.getElementById('aiCopy').style.display='none';
+  document.getElementById('aiDataSize').textContent=dataSize;
+  document.getElementById('aiEndpoint').textContent=endpoint;
+  document.getElementById('aiOverlay').classList.remove('hidden');
+}
+function showAiResult(text){
+  document.getElementById('aiLoading').style.display='none';
+  const el=document.getElementById('aiResult');
+  el.innerHTML=renderMd(text);
+  el.style.display='block';
+  document.getElementById('aiCopy').style.display='inline-flex';
+  document.getElementById('aiCopy').onclick=()=>{navigator.clipboard.writeText(text);alert('已复制到剪贴板');};
+}
+function showAiError(msg){
+  document.getElementById('aiLoading').style.display='none';
+  const el=document.getElementById('aiError');
+  el.textContent=msg;
+  el.style.display='block';
+}
+function closeAiModal(){document.getElementById('aiOverlay').classList.add('hidden');}
+
+async function askAi(){
+  // 校验配置
+  const apiUrl=(document.getElementById('aiApiUrl')?.value||'').trim().replace(/\/+$/,'');
+  const model=(document.getElementById('aiModel')?.value||'').trim();
+  const key=(document.getElementById('aiKey')?.value||'').trim();
+  if(!apiUrl){alert('请先在「分析配置 - E. AI 分析」填写 API 地址');return;}
+  if(!model){alert('请先填写模型名称');return;}
+  if(!key){alert('请先填写密钥');return;}
+  if(!STATE.filtered.length){alert('没有词根数据，请先上传报告');return;}
+  // 收集数据
+  const payload=collectAiData();
+  const prompt=document.getElementById('aiPrompt')?.value||AI_DEFAULT_PROMPT;
+  const userContent=`以下是亚马逊广告搜索词词根分析数据（JSON格式），请分析：\n\n\`\`\`json\n${JSON.stringify(payload,null,2)}\n\`\`\``;
+  const dataSize=(new Blob([userContent]).size/1024).toFixed(1)+'KB';
+  const endpoint=apiUrl.replace(/^https?:\/\//,'').split('/')[0];
+  showAiLoading(dataSize,endpoint);
+  try{
+    const resp=await fetch(apiUrl+'/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},
+      body:JSON.stringify({
+        model:model,
+        messages:[
+          {role:'system',content:prompt},
+          {role:'user',content:userContent}
+        ],
+        temperature:0.3,
+        stream:false
+      })
+    });
+    if(!resp.ok){
+      const errText=await resp.text();
+      showAiError(`API 返回错误 ${resp.status}:\n${errText.slice(0,500)}`);
+      return;
+    }
+    const data=await resp.json();
+    const text=data.choices?.[0]?.message?.content||'(空回复)';
+    showAiResult(text);
+  }catch(e){
+    showAiError(`请求失败：${e.message}\n\n常见原因：\n1. API 地址不正确或未包含 https://\n2. 跨域(CORS)被拦截——部分服务商需在后台配置允许的来源\n3. 密钥无效或余额不足\n4. 网络连接问题`);
+  }
+}
+document.getElementById('askAi').onclick=askAi;
+document.getElementById('aiPromptReset').onclick=()=>{
+  document.getElementById('aiPrompt').value=AI_DEFAULT_PROMPT;
+  saveCfg();
+};
+
 /* ============ 配置持久化（localStorage） ============ */
 // 保存/恢复用户配置，刷新页面或下次访问时自动还原
 const CFG_KEY='fz_cfg_v1';
-const CFG_IDS=['stopwords','decimals','minLen','wPerf','wPos','wFreq','minFreq','minScore','negCostThr','harvAcosThr','topN','comboLen'];
+const CFG_IDS=['stopwords','decimals','minLen','wPerf','wPos','wFreq','minFreq','minScore','negCostThr','harvAcosThr','topN','comboLen','aiApiUrl','aiModel','aiKey','aiTopN','aiPrompt'];
 const CFG_CHIPS=['pctToggle','colorToggle','filterNum','filterSpec'];
 function saveCfg(){
   try{
@@ -1567,6 +1863,7 @@ loadCfg();
 // 配置变更时自动保存：数值/下拉用 change，停用词用 input 实时存，开关 chip 用 click
 CFG_IDS.forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',saveCfg);});
 document.getElementById('stopwords').addEventListener('input',saveCfg);
+['aiApiUrl','aiModel','aiKey','aiPrompt'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',saveCfg);});
 CFG_CHIPS.forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('click',saveCfg);});
 </script>
 </div>
