@@ -1799,7 +1799,24 @@ function showAiResult(text){
   el.innerHTML=renderMd(text);
   el.style.display='block';
   document.getElementById('aiCopy').style.display='inline-flex';
-  document.getElementById('aiCopy').onclick=()=>{navigator.clipboard.writeText(text);alert('已复制到剪贴板');};
+  document.getElementById('aiCopy').onclick=async()=>{
+    try{
+      if(navigator.clipboard&&navigator.clipboard.writeText&&window.isSecureContext){
+        await navigator.clipboard.writeText(text);
+      }else{
+        const ta=document.createElement('textarea');
+        ta.value=text;ta.style.cssText='position:fixed;left:-9999px;top:0';
+        document.body.appendChild(ta);ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      const btn=document.getElementById('aiCopy');
+      const orig=btn.textContent;btn.textContent='✓ 已复制';
+      setTimeout(()=>{btn.textContent=orig;},1500);
+    }catch(e){
+      alert('复制失败，请手动选择文本复制');
+    }
+  };
 }
 function showAiError(msg){
   document.getElementById('aiLoading').style.display='none';
