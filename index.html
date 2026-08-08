@@ -522,6 +522,8 @@ function detectType(headers, sample){
   // 手动广告：目标竞价列名可能带任意币种后缀 (USD)/(CAD)/(EUR)...
   if(has('顾客搜索词') && hasColPrefix(headers,'目标竞价')) return 'manual';
   if(has('顾客搜索词')) return 'auto';
+  // 广告组级 Tab 导出（多"已添加为"列，搜索词在"匹配的商品"，关键词=投放词，含目标竞价）
+  if(has('匹配的商品') && has('关键词') && hasColPrefix(headers,'目标竞价')) return 'manual_adgroup';
   // 新格式（搜索词报告 v2）
   if(has('搜索词')) return 'searchterm_v2';
   return 'unknown';
@@ -579,6 +581,14 @@ function getMatchType(type, row, headers){
     if(a.includes('广泛')) return '手动-广泛匹配';
     return '手动-扩展词';
   }
+  if(type==='manual_adgroup'){
+    // 广告组级Tab导出：匹配类型从"已添加为"或"关键词"列推断，没有则走投放词
+    const a=row['已添加为']||'';
+    if(a.includes('精准')) return '手动-精准匹配';
+    if(a.includes('词组')) return '手动-词组匹配';
+    if(a.includes('广泛')) return '手动-广泛匹配';
+    return '手动-广告组';
+  }
   if(type==='product'){
     const p=row['商品投放']||'';
     if(p.includes('asin-expanded')) return '商品-asin扩展';
@@ -630,6 +640,7 @@ function standardize(rows, type){
   return rows.map(row=>{
     let searchTerm='';
     if(type==='product') searchTerm=row['匹配的商品']||'';
+    else if(type==='manual_adgroup') searchTerm=row['匹配的商品']||''; // 广告组级Tab版：搜索词在"匹配的商品"列
     else searchTerm=row['顾客搜索词']||'';
     return {
       source:type,
@@ -877,7 +888,7 @@ function renderFileList(){
       <button class="btn btn-ghost btn-sm" onclick="removeFile(${i})">移除</button>
     </div>`).join('');
 }
-function typeLabel(t){return {auto:'自动广告',manual:'手动广告',product:'商品投放',unknown:'未知'}[t]||t;}
+function typeLabel(t){return {auto:'自动广告',manual:'手动广告',manual_adgroup:'手动广告(广告组)',product:'商品投放',unknown:'未知'}[t]||t;}
 function removeFile(i){fileMetas.splice(i,1);renderFileList();rebuild();}
 
 /* ============ 主流程 ============ */
