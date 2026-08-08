@@ -418,6 +418,14 @@ function num(v){
   return isNaN(n)?0:n;
 }
 
+/* ============ 币种无关的指标列取值 ============ */
+function pickMetric(row, base){
+  if(row[base]!==undefined) return row[base];
+  const re=new RegExp('^'+base.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*\\(.*\\)$');
+  for(const k in row){ if(re.test(k)) return row[k]; }
+  return undefined;
+}
+
 /* ============ 文件类型识别 ============ */
 function detectType(headers, sample){
   const has=(...ks)=>ks.some(k=>headers.includes(k));
@@ -498,9 +506,9 @@ function standardize(rows, type){
     return rows.map(row=>{
       const searchTerm=row['搜索词']||'';
       // 成本列名可能是"总成本"或"总成本 (USD)"
-      const costVal=num(row['总成本']??row['总成本 (USD)']);
-      const salesVal=num(row['销售额']??row['销售额 (USD)']);
-      const cpcVal=row['CPC']??row['CPC (USD)'];
+      const costVal=num(pickMetric(row,'总成本'));
+      const salesVal=num(pickMetric(row,'销售额'));
+      const cpcVal=pickMetric(row,'CPC');
       const acosVal=row['ACOS'];
       const ctrVal=row['点击率'];
       const cvrVal=row['购买率'];
@@ -547,10 +555,10 @@ function standardize(rows, type){
         '展示量':num(row['展示量']),
         '点击量':num(row['点击量']),
         '点击率':num(row['点击率']),
-        '总成本':num(row['总成本 (USD)']),
-        'CPC':num(row['CPC (USD)']),
+        '总成本':num(pickMetric(row,'总成本')),
+        'CPC':num(pickMetric(row,'CPC')),
         '购买量':num(row['购买量']),
-        '销售额':num(row['销售额 (USD)']),
+        '销售额':num(pickMetric(row,'销售额')),
         'ACOS':num(row['ACOS']),
         'ROAS':num(row['ROAS']),
         '购买率':num(row['购买率']),
