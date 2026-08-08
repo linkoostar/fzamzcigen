@@ -427,11 +427,18 @@ function pickMetric(row, base){
 }
 
 /* ============ 文件类型识别 ============ */
+// 列名前缀匹配（币种无关）：表头中是否存在以 base 开头、可带 (XXX) 币种后缀的列
+function hasColPrefix(headers, base){
+  if(headers.includes(base)) return true;
+  const re=new RegExp('^'+base.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*\\(.*\\)$');
+  return headers.some(h=>re.test(h));
+}
 function detectType(headers, sample){
   const has=(...ks)=>ks.some(k=>headers.includes(k));
   // 旧格式
   if(has('商品投放')) return 'product';
-  if(has('顾客搜索词') && has('目标竞价 (USD)')) return 'manual';
+  // 手动广告：目标竞价列名可能带任意币种后缀 (USD)/(CAD)/(EUR)...
+  if(has('顾客搜索词') && hasColPrefix(headers,'目标竞价')) return 'manual';
   if(has('顾客搜索词')) return 'auto';
   // 新格式（搜索词报告 v2）
   if(has('搜索词')) return 'searchterm_v2';
@@ -584,6 +591,30 @@ function charType(c){
 /* 日文助词集合（作为额外切分点） */
 const JP_PARTICLES=new Set(['の','で','を','に','が','と','や','へ','から','まで','用','替','代']);
 
+/* 英文轻量复数归一（不引入完整词干提取，只处理常见复数后缀）
+   gloves→glove, pencils→pencil, babies→baby, boxes→box, days→day
+   保留：不可数词、已单数词、SPEC_WORDS 里的单位词(避免 inches→inch 后被误判) */
+const SINGULAR_KEEP=new Set(['is','as','this','gas','bus','plus','us','lens','series','analysis','diagnosis','thesis','crisis','basis','boss','class','glass','dress','press','stress','cross','miss','kiss','less','mass','pass']);
+function singularize(w){
+  if(!w || w.length<=3) return w;
+  if(SINGULAR_KEEP.has(w)) return w;
+  if(SPEC_WORDS.has(w)) return w; // 单位词不归一（inch/cm 等保持原形，由 filterSpec 决定去留）
+  // ies -> y (babies->baby)
+  if(/ies$/.test(w) && w.length>4) return w.slice(0,-3)+'y';
+  // es -> 去es (boxes->box, brushes->brush)；shoes/tales 这类 e+s 只去 s
+  if(/es$/.test(w)){
+    if(/[^aeiou]es$/.test(w)===false && /ses$|zes$|xes$|ches$|shes$/.test(w)===false){
+      return w.slice(0,-1);
+    }
+    return w.slice(0,-2);
+  }
+  // s -> 去s (gloves->glove, pencils->pencil)；排除 ss/is/us/as/os 结尾
+  if(/s$/.test(w) && !/ss$|is$|us$|as$|os$/.test(w)){
+    return w.slice(0,-1);
+  }
+  return w;
+}
+
 function splitTokens(text, type, stopwords){
   const s=String(text||'').toLowerCase();
   if(type==='product'){
@@ -634,6 +665,9 @@ function splitTokens(text, type, stopwords){
   }
   parts=expanded;
 
+  // 复数归一（仅对纯 ASCII 字母词，不影响日文/CJK）
+  parts=parts.map(t=>/^[a-z]+$/.test(t)?singularize(t):t);
+
   return parts.filter(t=>{
     if(stopwords.has(t)) return false;
     if(t.length<minLen) return false;
@@ -644,6 +678,12 @@ function splitTokens(text, type, stopwords){
 }
 
 /* ============ 均摊（单行→多个词根记录） ============ */
+/* 口径说明（已调整）：
+   主指标（展示量/点击量/总成本/购买量/销售额）采用「关联口径」= 完整值（不÷N），
+   反映该词根参与了多少转化/流量，符合亚马逊归因逻辑（整笔订单归给这条搜索词）。
+   均摊值（÷N）降级为 均摊xxx 参考列，仅供需要总量守恒估算时使用。
+   注意：关联口径下，同一笔订单会被多个词根各计一次，跨词根相加会重复——
+   但词根表是按词根独立决策的，不跨词根加总，故对单词根排名无害。 */
 function allocate(row, stopwords){
   const tokens=splitTokens(row.searchTerm, row.source, stopwords);
   const N=tokens.length;
@@ -655,20 +695,24 @@ function allocate(row, stopwords){
     const posPoints=N-i; // i从0开始，第1位(i=0)得N分，末位得1分
     return {
       '词根':t,'matchType':row.matchType,'source':row.source,'searchTerm':row.searchTerm,
-      '展示量':div(m['展示量']),
-      '点击量':div(m['点击量']),
-      '总成本':div(m['总成本']),
-      '购买量':div(m['购买量']),
-      '销售额':div(m['销售额']),
+      // 主指标：关联口径（完整值，不÷N）
+      '展示量':m['展示量'],
+      '点击量':m['点击量'],
+      '总成本':m['总成本'],
+      '购买量':m['购买量'],
+      '销售额':m['销售额'],
+      // 均摊参考列（÷N，满足总量守恒，跨词根相加不重复）
+      '均摊展示量':div(m['展示量']),
+      '均摊点击量':div(m['点击量']),
+      '均摊总成本':div(m['总成本']),
+      '均摊购买量':div(m['购买量']),
+      '均摊销售额':div(m['销售额']),
       // 比率类不÷N，汇总时从求和量重算
       '点击率':m['点击率'],
       'CPC':m['CPC'],
       'ACOS':m['ACOS'],
       'ROAS':m['ROAS'],
       '购买率':m['购买率'],
-      // 贡献口径：完整(不除以N)的购买量/销售额，跨词根会重复计算，仅用于「该词根参与了多少转化」的参考列，不计入均摊主指标
-      '关联购买量':m['购买量'],
-      '关联销售额':m['销售额'],
       'posPoints':posPoints,
       'posMax':N,
     };
@@ -677,6 +721,7 @@ function allocate(row, stopwords){
 
 /* ============ 汇总（同词根聚合） ============ */
 const SUM_KEYS=['展示量','点击量','总成本','购买量','销售额'];
+const AVG_KEYS=['均摊展示量','均摊点击量','均摊总成本','均摊购买量','均摊销售额'];
 function aggregate(tokens){
   const map=new Map();
   for(const t of tokens){
@@ -691,11 +736,11 @@ function aggregate(tokens){
   for(const g of map.values()){
     const recs=g.records;
     const n=recs.length;
-    const o={'词根':g.词根,'出现次数':n,'来源数':g.sources.size,'匹配类型':Array.from(g.matches).join(' / '),'searchTerms':g.searchTerms};
+    const o={'词根':g.词根,'出现次数':n,'搜索词覆盖数':g.searchTerms.length,'来源数':g.sources.size,'匹配类型':Array.from(g.matches).join(' / '),'searchTerms':g.searchTerms};
+    // 主指标（关联口径）求和
     for(const k of SUM_KEYS) o[k]=recs.reduce((s,r)=>s+r[k],0);
-    // 贡献口径列（完整值求和，跨词根重复计算，不满足总量守恒，只做参考）
-    o['关联购买量']=recs.reduce((s,r)=>s+r['关联购买量'],0);
-    o['关联销售额']=recs.reduce((s,r)=>s+r['关联销售额'],0);
+    // 均摊参考列求和（÷N口径，满足总量守恒）
+    for(const k of AVG_KEYS) o[k]=recs.reduce((s,r)=>s+r[k],0);
     // 所有比率从汇总量重算（CTR/CPC/ACOS/ROAS/购买率统一逻辑）
     o['点击率']=o['展示量']>0?o['点击量']/o['展示量']:0;
     o['CPC']=o['点击量']>0?o['总成本']/o['点击量']:0;
@@ -715,13 +760,14 @@ function aggregate(tokens){
   }
   // 第二阶段：用全局ROAS分位数计算表现分，避免硬编码上限
   // 只用达到「组词池门槛-至少出现几次」的词根来定分位数阈值，避免只出现1~2次的偶然高ROAS词根把阈值顶得过高，
-  // 反而把真正稳定、高频转化的词根打成不及格。定阈值的样本量不足时自动回退到全量。
+  // 反而把真正稳定、高频转化的词根打成不及格。定阈值的样本量不足时回退到经验阈值（亚马逊广告常见ROAS分位），
+  // 而非全量——因为全量会把1次的偶然高ROAS词算进来，反而污染阈值。
   const minFreqForPctl=parseInt(document.getElementById('minFreq')?.value)||3;
   let roasSample=result.filter(o=>o['出现次数']>=minFreqForPctl);
-  if(roasSample.length<5) roasSample=result; // 样本太少，回退全量避免阈值算不出来
   const roasVals=roasSample.map(o=>o['ROAS']).filter(v=>v>0).sort((a,b)=>a-b);
-  const roasP67=roasVals.length>=3?roasVals[Math.floor(roasVals.length*0.67)]:(roasVals.length?roasVals[roasVals.length-1]:6);
-  const roasP33=roasVals.length>=3?roasVals[Math.floor(roasVals.length*0.33)]:(roasVals.length?roasVals[0]:2);
+  // 样本充足(≥5个有效ROAS值)用数据分位；否则用经验阈值(p67=4, p33=2)
+  const roasP67=roasVals.length>=5?roasVals[Math.floor(roasVals.length*0.67)]:4;
+  const roasP33=roasVals.length>=5?roasVals[Math.floor(roasVals.length*0.33)]:2;
   for(const o of result){
     // 表现分：ROAS>=p67满分，>=p33及格(50分)，线性映射
     // 无花费(纯曝光/未点击，属于"没测过"而非"测过但差")给中性分50，不打死也不拔高；
@@ -746,21 +792,21 @@ function aggregate(tokens){
 const METRICS=[
   {key:'位置分',label:'位置分',score:true,tip:'词根在搜索词中的位置得分(0~100)。第1位得N分(词根数)，末位得1分，线性递减。同一词根所有出现求平均。越靠前得分越高，代表买家核心意图词'},
   {key:'复合得分',label:'复合得分',score:true,tip:'综合评价分(0~100)。= 表现分×权重 + 位置分×权重 + 频次权重×权重。权重可在分析配置区调节(默认60/20/20)。转化(表现分)占主导，位置仅作辅助。用于组词建议的候选词根筛选'},
-  {key:'出现次数',label:'出现次数',int:true,src:false,tip:'该词根在所有搜索词中出现的总次数（每条搜索词计1次）'},
-  {key:'展示量',label:'展示量',oneDec:true,tip:'该词根命中的所有搜索词的展示量之和（已按词根数均摊后汇总，保留1位小数）'},
-  {key:'点击量',label:'点击量',oneDec:true,tip:'该词根命中的所有搜索词的点击量之和（已按词根数均摊后汇总，保留1位小数）'},
+  {key:'出现次数',label:'出现次数',int:true,src:false,tip:'该词根在所有搜索词中出现的总次数（每条搜索词计1次，含重复出现）'},
+  {key:'搜索词覆盖数',label:'搜索词覆盖数',int:true,src:false,tip:'该词根出现在多少条不同搜索词里。比"出现次数"更能反映触达了多少种买家意图——10条词各出现1次(覆盖10)比3条词各出现3次(覆盖3)价值更高'},
+  {key:'展示量',label:'展示量',oneDec:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的展示量之和。反映该词根触达的流量规模，跨词根相加会重复，仅用于单词根间比较'},
+  {key:'点击量',label:'点击量',oneDec:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的点击量之和'},
   {key:'点击率',label:'点击率',pct:true,tip:'= 点击量 ÷ 展示量。从汇总量重算，非简单平均'},
-  {key:'总成本',label:'总成本',cost:true,tip:'该词根命中的所有搜索词的广告花费之和（已按词根数均摊后汇总）'},
+  {key:'总成本',label:'总成本',cost:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的广告花费之和'},
   {key:'CPC',label:'CPC',cost:true,tip:'= 总成本 ÷ 点击量。从汇总量重算，非简单平均'},
-  {key:'购买量',label:'购买量',oneDec:true,tip:'该词根命中的所有搜索词的归因购买数之和（已按词根数均摊后汇总，保留1位小数）'},
-  {key:'销售额',label:'销售额',cost:true,tip:'该词根命中的所有搜索词的归因销售额之和（已按词根数均摊后汇总）'},
-  {key:'关联购买量',label:'关联购买量⚠️',int:true,tip:'⚠️贡献口径，非均摊值：该词根出现过的搜索词的完整购买量之和（不除以词根数）。一笔订单若搜索词有3个词根，会被3个词根各计1次——跨词根相加会重复计算，不能当预算/总量数字用，只用来看"这个词根参与了多少笔转化"'},
-  {key:'关联销售额',label:'关联销售额⚠️',cost:true,tip:'⚠️贡献口径，非均摊值：该词根出现过的搜索词的完整销售额之和（不除以词根数），跨词根相加会重复计算，不能当预算/总量数字用，只做转化贡献度参考'},
+  {key:'购买量',label:'购买量',oneDec:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的归因购买数之和'},
+  {key:'销售额',label:'销售额',cost:true,tip:'关联口径（不÷词根数）：该词根出现过的所有搜索词的归因销售额之和。反映该词根参与的转化价值，符合亚马逊"整笔订单归给搜索词"的归因逻辑'},
   {key:'ACOS',label:'ACOS',pct:true,tip:'= 总成本 ÷ 销售额。越低越好，0表示无花费或无销售'},
   {key:'ROAS',label:'ROAS',tip:'= 销售额 ÷ 总成本。越高越好，0表示无花费或无销售'},
   {key:'购买率',label:'购买率',pct:true,tip:'= 购买量 ÷ 点击量。即转化率，从汇总量重算'},
   {key:'CPA',label:'CPA',cost:true,tip:'= 总成本 ÷ 购买量。每促成一单的广告成本，越低越好。0表示无购买'},
   {key:'客单价',label:'客单价',cost:true,tip:'= 销售额 ÷ 购买量。该词根关联商品的客单价。0表示无购买'},
+  {key:'均摊销售额',label:'均摊销售额',cost:true,src:false,tip:'参考列（÷词根数）：销售额按词根数均摊后的值。满足总量守恒（跨词根相加=总销售额），但会稀释核心词价值。仅供需要估算预算分摊时参考'},
 ];
 
 /* ============ 渲染：文件列表 ============ */
@@ -1296,9 +1342,14 @@ function generateSuggestions(){
       allTerms:hits.map(h=>({term:h.term,展示量:h.m['展示量'],点击量:h.m['点击量'],总成本:h.m['总成本'],购买量:h.m['购买量'],销售额:h.m['销售额'],scheme:h.scheme,matchType:h.matchType})),
     });
   }
-  // 排序：历史ROAS优先，覆盖词数辅助，组词得分兜底
+  // 排序：综合分优先（盈利×流量兼顾），覆盖词数辅助，组词得分兜底
+  // 综合分 = ROAS × log10(展示量+1)，避免"高ROAS但只有2条词、展示量50"的小样本组合排在前面
+  // 无花费或无展示的组合综合分为0，自然靠后
+  for(const r of results){
+    r.综合分=r.ROAS>0&&r.展示量>0 ? r.ROAS*Math.log10(r.展示量+1) : 0;
+  }
   results.sort((a,b)=>{
-    if(b.ROAS!==a.ROAS) return b.ROAS-a.ROAS;
+    if(b.综合分!==a.综合分) return b.综合分-a.综合分;
     if(b.hitCount!==a.hitCount) return b.hitCount-a.hitCount;
     return b.comboScore-a.comboScore;
   });
@@ -1319,7 +1370,8 @@ function renderSuggestions(data){
     {k:'总成本',l:'总成本',cost:true,tip:'所有共现搜索词的广告花费之和（真实值，非均摊）'},
     {k:'购买量',l:'购买量',int:true,tip:'所有共现搜索词的归因购买数之和（真实值，非均摊）'},
     {k:'销售额',l:'销售额',cost:true,tip:'所有共现搜索词的归因销售额之和（真实值，非均摊）'},
-    {k:'ROAS',l:'ROAS',tip:'= 销售额 ÷ 总成本。基于共现搜索词真实汇总。默认按此列降序排列，反映该组合的历史盈利能力'},
+    {k:'综合分',l:'综合分',score:true,tip:'= ROAS × log10(展示量+1)。兼顾盈利能力和流量规模，避免"高ROAS但只有2条词、展示量50"的小样本组合排在前面。默认按此列降序'},
+    {k:'ROAS',l:'ROAS',tip:'= 销售额 ÷ 总成本。基于共现搜索词真实汇总。反映该组合的历史盈利能力，点表头可单独按此列排'},
     {k:'转化词占比',l:'转化词占比',pct:true,tip:'= 有购买的搜索词数 ÷ 覆盖词数。回答"这个组合下有多少比例的搜索词能带来转化"，不受单条展示量大小影响，比购买率更有参考意义'},
     {k:'sample',l:'示例搜索词',left:true,tip:'同时包含该组合所有词根的真实搜索词示例（最多展示3个）'},
   ];
@@ -1327,7 +1379,7 @@ function renderSuggestions(data){
   for(const c of cols){
     const tipAttr=c.tip?` title="${esc(c.tip)}"`:'';
     const helpIcon=c.tip?'<span class="th-help" onclick="event.stopPropagation()">?</span>':'';
-    h+=`<th class="${c.left?'th-l':''}" data-k="${c.k}"${tipAttr}>${c.l}${helpIcon}${c.k==='comboScore'||c.k==='hitCount'||c.int||c.pct||c.cost?'<span class="arrow">⇅</span>':''}</th>`;
+    h+=`<th class="${c.left?'th-l':''}" data-k="${c.k}"${tipAttr}>${c.l}${helpIcon}${c.k==='comboScore'||c.k==='综合分'||c.k==='hitCount'||c.int||c.pct||c.cost?'<span class="arrow">⇅</span>':''}</th>`;
   }
   thr.innerHTML=h;
   // 排序绑定
@@ -1517,8 +1569,35 @@ document.getElementById('toggleRangeFilters').onclick=function(){
   b.classList.toggle('hidden');
   this.textContent=(b.classList.contains('hidden')?'▸ 展开':'▾ 收起')+'具体指标范围筛选';
 };
+/* ============ 配置持久化（localStorage） ============ */
+// 保存/恢复用户配置，刷新页面或下次访问时自动还原
+const CFG_KEY='fz_cfg_v1';
+const CFG_IDS=['stopwords','decimals','minLen','wPerf','wPos','wFreq','minFreq','minScore','negCostThr','harvAcosThr','topN','comboLen'];
+const CFG_CHIPS=['pctToggle','colorToggle','filterNum','filterSpec'];
+function saveCfg(){
+  try{
+    const o={};
+    CFG_IDS.forEach(id=>{const el=document.getElementById(id);if(el)o[id]=el.value;});
+    CFG_CHIPS.forEach(id=>{const el=document.getElementById(id);if(el)o[id]=el.classList.contains('on');});
+    localStorage.setItem(CFG_KEY,JSON.stringify(o));
+  }catch(e){}
+}
+function loadCfg(){
+  try{
+    const s=localStorage.getItem(CFG_KEY);if(!s)return;
+    const o=JSON.parse(s);
+    CFG_IDS.forEach(id=>{const el=document.getElementById(id);if(el&&o[id]!==undefined&&o[id]!==null)el.value=o[id];});
+    CFG_CHIPS.forEach(id=>{const el=document.getElementById(id);if(!el)return;const on=!!o[id];el.classList.toggle('on',on);if(id==='pctToggle')STATE.pctDisplay=on;if(id==='colorToggle')STATE.colorOn=on;});
+  }catch(e){}
+}
+// 启动时载入已存配置（在事件绑定之后、首次渲染之前）
+loadCfg();
+// 配置变更时自动保存：数值/下拉用 change，停用词用 input 实时存，开关 chip 用 click
+CFG_IDS.forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',saveCfg);});
+document.getElementById('stopwords').addEventListener('input',saveCfg);
+CFG_CHIPS.forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('click',saveCfg);});
 </script>
 </div>
-<p align="center">@2026 亚马逊广告词根分析工具byDONGDONG </p>  
+<p align="center">@2026 亚马逊广告词根分析工具byDONGDONG </p>
 </body>
 </html>
